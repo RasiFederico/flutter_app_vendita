@@ -1,122 +1,80 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'screens/main_scaffold.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
+  runApp(const SwabbitApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SwabbitApp extends StatelessWidget {
+  const SwabbitApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Swabbit',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: SwabbitTheme.bg,
+        colorScheme: const ColorScheme.dark(
+          primary: SwabbitTheme.accent,
+          secondary: SwabbitTheme.accent2,
+          surface: SwabbitTheme.surface,
         ),
+        useMaterial3: true,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
+      home: const MainScaffold(),
     );
   }
+}
+
+/// ─── THEME ───────────────────────────────────────────────────────────────────
+class SwabbitTheme {
+  SwabbitTheme._();
+
+  static const Color bg       = Color(0xFF0A0A0F);
+  static const Color surface  = Color(0xFF111118);
+  static const Color surface2 = Color(0xFF18181F);
+  static const Color surface3 = Color(0xFF1E1E27);
+  static const Color border   = Color(0x12FFFFFF);
+  static const Color accent   = Color(0xFF00E5CC);
+  static const Color accent2  = Color(0xFF7B5CEA);
+  static const Color accent3  = Color(0xFFFF5A36);
+  static const Color text     = Color(0xFFF0F0F5);
+  static const Color text2    = Color(0xFF8888A0);
+  static const Color text3    = Color(0xFF55556A);
+  static const Color green    = Color(0xFF22D87A);
+  static const Color yellow   = Color(0xFFFFD445);
+
+  static const double radius   = 16.0;
+  static const double radiusSm = 10.0;
+
+  // Category gradients
+  static const gpuGrad  = LinearGradient(colors: [Color(0xFF1a0d30), Color(0xFF2d1654)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const cpuGrad  = LinearGradient(colors: [Color(0xFF0d1a2d), Color(0xFF0f2e54)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const ramGrad  = LinearGradient(colors: [Color(0xFF0d2d1a), Color(0xFF0e4228)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const ssdGrad  = LinearGradient(colors: [Color(0xFF2d1a0d), Color(0xFF4a2a0e)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const mbGrad   = LinearGradient(colors: [Color(0xFF2d0d1a), Color(0xFF4a0e2a)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const coolGrad = LinearGradient(colors: [Color(0xFF0d2d2d), Color(0xFF0e4040)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const accentGrad = LinearGradient(colors: [accent2, accent], begin: Alignment.topLeft, end: Alignment.bottomRight);
+
+  static const TextStyle displayStyle = TextStyle(
+    fontFamily: 'Syne', fontWeight: FontWeight.w800,
+    color: text, letterSpacing: -0.5,
+  );
+  static const TextStyle monoStyle = TextStyle(
+    fontFamily: 'SpaceMono', fontWeight: FontWeight.w700, color: text,
+  );
+
+  static BoxDecoration cardDecoration({Color? borderColor}) => BoxDecoration(
+    color: surface2,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: borderColor ?? border),
+  );
 }
