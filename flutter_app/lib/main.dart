@@ -1,13 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/main_scaffold.dart';
+import 'screens/auth_screen.dart';
+import 'services/supabase_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Inizializza Supabase ──────────────────────────────────────────────────
+  await Supabase.initialize(
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
+  );
+
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
+
   runApp(const SwabbitApp());
 }
 
@@ -29,7 +40,10 @@ class SwabbitApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MainScaffold(),
+      // Auth gate: se l'utente è già loggato → MainScaffold, altrimenti → AuthScreen
+      home: SupabaseService.isLoggedIn
+          ? const MainScaffold()
+          : const AuthScreen(),
     );
   }
 }
@@ -58,23 +72,33 @@ class SwabbitTheme {
   // Category gradients
   static const gpuGrad  = LinearGradient(colors: [Color(0xFF1a0d30), Color(0xFF2d1654)], begin: Alignment.topLeft, end: Alignment.bottomRight);
   static const cpuGrad  = LinearGradient(colors: [Color(0xFF0d1a2d), Color(0xFF0f2e54)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-  static const ramGrad  = LinearGradient(colors: [Color(0xFF0d2d1a), Color(0xFF0e4228)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-  static const ssdGrad  = LinearGradient(colors: [Color(0xFF2d1a0d), Color(0xFF4a2a0e)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-  static const mbGrad   = LinearGradient(colors: [Color(0xFF2d0d1a), Color(0xFF4a0e2a)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-  static const coolGrad = LinearGradient(colors: [Color(0xFF0d2d2d), Color(0xFF0e4040)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-  static const accentGrad = LinearGradient(colors: [accent2, accent], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const ramGrad  = LinearGradient(colors: [Color(0xFF0d2d1a), Color(0xFF0f5430)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const ssdGrad  = LinearGradient(colors: [Color(0xFF1a1a0d), Color(0xFF3d3200)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const mbGrad   = LinearGradient(colors: [Color(0xFF2d0d0d), Color(0xFF5c1a00)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  static const coolGrad  = LinearGradient(colors: [Color(0xFF0d2d2d), Color(0xFF005c5c)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+
+  // Accent gradient (teal → purple)
+  static const accentGrad = LinearGradient(
+    colors: [Color(0xFF00E5CC), Color(0xFF7B5CEA)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   static const TextStyle displayStyle = TextStyle(
-    fontFamily: 'Syne', fontWeight: FontWeight.w800,
-    color: text, letterSpacing: -0.5,
-  );
-  static const TextStyle monoStyle = TextStyle(
-    fontFamily: 'SpaceMono', fontWeight: FontWeight.w700, color: text,
+    fontFamily: 'Syne',
+    fontWeight: FontWeight.w800,
+    color: text,
   );
 
-  static BoxDecoration cardDecoration({Color? borderColor}) => BoxDecoration(
-    color: surface2,
+    static const TextStyle monoStyle = TextStyle(
+    fontFamily: 'Syne',
+    fontWeight: FontWeight.w800,
+    color: text,
+  );
+
+  static BoxDecoration cardDecoration({Color? color}) => BoxDecoration(
+    color: color ?? surface,
     borderRadius: BorderRadius.circular(radius),
-    border: Border.all(color: borderColor ?? border),
+    border: Border.all(color: border),
   );
 }
