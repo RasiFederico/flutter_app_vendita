@@ -10,6 +10,10 @@
 	<string>Flutter App</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Swabbit ha bisogno di accedere alle foto per caricare le immagini degli annunci.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Swabbit ha bisogno della fotocamera per scattare foto degli articoli.</string>
 	<key>CFBundleIdentifier</key>
 	<key>NSAppTransportSecurity</key>
 	<dict>

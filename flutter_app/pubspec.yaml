@@ -11,7 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  supabase_flutter: ^2.5.0
+  supabase_flutter: ^2.10.2
+  image_picker: ^1.1.2
   shared_preferences: ^2.2.3
 
 dev_dependencies:
