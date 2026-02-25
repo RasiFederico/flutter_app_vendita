@@ -132,10 +132,12 @@ class Listing {
   /// Supporta join opzionale con `profiles`.
   factory Listing.fromMap(Map<String, dynamic> map) {
     final profile = map['profiles'] as Map<String, dynamic>?;
-    final String sellerName = profile != null
-        ? '${profile['nome'] ?? ''} ${profile['cognome'] ?? ''}'.trim()
-        : '';
-    final String sellerUsername = profile?['username'] ?? '';
+    final String sellerUsername = (profile?['username'] as String? ?? '').trim();
+    // Nome visualizzato: "Nome Cognome" → username → "Utente"
+    final String fullName =
+        '${profile?['nome'] ?? ''} ${profile?['cognome'] ?? ''}'.trim();
+    final String sellerName =
+        fullName.isNotEmpty ? fullName : sellerUsername;
     final String? sellerAvatarUrl = profile?['avatar_url'] as String?;
     final double sellerRating =
         (profile?['rating'] as num?)?.toDouble() ?? 5.0;

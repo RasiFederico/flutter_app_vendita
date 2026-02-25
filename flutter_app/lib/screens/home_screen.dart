@@ -33,9 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
         transitionsBuilder: (_, anim, __, child) => FadeTransition(
           opacity: anim,
           child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOut),
-            ),
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.05),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
             child: child,
           ),
         ),
@@ -52,37 +53,39 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _refresh,
           color: SwabbitTheme.accent,
           backgroundColor: SwabbitTheme.surface,
-        child: CustomScrollView(
-          slivers: [
-            // ── HEADER ────────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildHeader()),
-            // ── SEARCH BAR ────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildSearchBar(context)),
-            // ── CATEGORIES ────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildCategories()),
-            // ── FEATURED BANNER ───────────────────────────────────────
-            SliverToBoxAdapter(child: _buildFeaturedBanner(context)),
-            // ── SECTION TITLE ─────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildSectionTitle('Annunci recenti')),
-            // ── PRODUCT GRID ──────────────────────────────────────────
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.72,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _buildProductCard(context, AppData.products[index]),
-                  childCount: AppData.products.length,
+          child: CustomScrollView(
+            slivers: [
+              // ── HEADER ────────────────────────────────────────────────
+              SliverToBoxAdapter(child: _buildHeader()),
+              // ── SEARCH BAR ────────────────────────────────────────────
+              SliverToBoxAdapter(child: _buildSearchBar(context)),
+              // ── CATEGORIES ────────────────────────────────────────────
+              SliverToBoxAdapter(child: _buildCategories()),
+              // ── FEATURED BANNER ───────────────────────────────────────
+              SliverToBoxAdapter(child: _buildFeaturedBanner(context)),
+              // ── SECTION TITLE ─────────────────────────────────────────
+              SliverToBoxAdapter(child: _buildSectionTitle('Annunci recenti')),
+              // ── PRODUCT GRID ──────────────────────────────────────────
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.72,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) =>
+                        _buildProductCard(context, AppData.products[index]),
+                    childCount: AppData.products.length,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),),
+      ),
     );
   }
 
@@ -95,8 +98,26 @@ class _HomeScreenState extends State<HomeScreen> {
           RichText(
             text: const TextSpan(
               children: [
-                TextSpan(text: 'Swab', style: TextStyle(fontFamily: 'Syne', fontWeight: FontWeight.w800, fontSize: 26, color: SwabbitTheme.text, letterSpacing: -0.5)),
-                TextSpan(text: 'bit', style: TextStyle(fontFamily: 'Syne', fontWeight: FontWeight.w800, fontSize: 26, color: SwabbitTheme.accent, letterSpacing: -0.5)),
+                TextSpan(
+                  text: 'Swab',
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 26,
+                    color: SwabbitTheme.text,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                TextSpan(
+                  text: 'bit',
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 26,
+                    color: SwabbitTheme.accent,
+                    letterSpacing: -0.5,
+                  ),
+                ),
               ],
             ),
           ),
@@ -106,13 +127,18 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _IconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
               Positioned(
-                top: 8, right: 8,
+                top: 8,
+                right: 8,
                 child: Container(
-                  width: 7, height: 7,
+                  width: 7,
+                  height: 7,
                   decoration: BoxDecoration(
                     color: SwabbitTheme.accent3,
                     shape: BoxShape.circle,
-                    border: Border.all(color: SwabbitTheme.surface2, width: 1.5),
+                    border: Border.all(
+                      color: SwabbitTheme.surface2,
+                      width: 1.5,
+                    ),
                   ),
                 ),
               ),
@@ -141,7 +167,10 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.search_rounded, color: SwabbitTheme.text3, size: 18),
               SizedBox(width: 10),
-              Text('Cerca GPU, CPU, RAM...', style: TextStyle(color: SwabbitTheme.text3, fontSize: 14)),
+              Text(
+                'Cerca GPU, CPU, RAM...',
+                style: TextStyle(color: SwabbitTheme.text3, fontSize: 14),
+              ),
             ],
           ),
         ),
@@ -165,25 +194,49 @@ class _HomeScreenState extends State<HomeScreen> {
               final cat = AppData.categories[i];
               final isSelected = _selectedCategoryIndex == i;
               return GestureDetector(
-                onTap: () => setState(() => _selectedCategoryIndex = isSelected ? -1 : i),
+                onTap: () => setState(
+                  () => _selectedCategoryIndex = isSelected ? -1 : i,
+                ),
                 child: Column(
                   children: [
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      width: 58, height: 58,
+                      width: 58,
+                      height: 58,
                       decoration: BoxDecoration(
                         gradient: cat.gradient,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: isSelected ? SwabbitTheme.accent : SwabbitTheme.border,
+                          color: isSelected
+                              ? SwabbitTheme.accent
+                              : SwabbitTheme.border,
                           width: isSelected ? 1.5 : 1,
                         ),
-                        boxShadow: isSelected ? [BoxShadow(color: SwabbitTheme.accent.withOpacity(0.25), blurRadius: 16)] : [],
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: SwabbitTheme.accent.withOpacity(0.25),
+                                  blurRadius: 16,
+                                ),
+                              ]
+                            : [],
                       ),
-                      child: Center(child: Text(cat.emoji, style: const TextStyle(fontSize: 24))),
+                      child: Center(
+                        child: Text(
+                          cat.emoji,
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 6),
-                    Text(cat.label, style: const TextStyle(fontSize: 11, color: SwabbitTheme.text2, fontWeight: FontWeight.w500)),
+                    Text(
+                      cat.label,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: SwabbitTheme.text2,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -215,12 +268,19 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Glow
             Positioned(
-              top: -40, right: -20,
+              top: -40,
+              right: -20,
               child: Container(
-                width: 200, height: 200,
+                width: 200,
+                height: 200,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [SwabbitTheme.accent2.withOpacity(0.2), Colors.transparent]),
+                  gradient: RadialGradient(
+                    colors: [
+                      SwabbitTheme.accent2.withOpacity(0.2),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -228,42 +288,80 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: SwabbitTheme.accent2, borderRadius: BorderRadius.circular(6)),
-                  child: const Text('IN EVIDENZA', style: TextStyle(fontFamily: 'SpaceMono', fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.5)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SwabbitTheme.accent2,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'IN EVIDENZA',
+                    style: TextStyle(
+                      fontFamily: 'SpaceMono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 RichText(
                   text: TextSpan(
-                    style: SwabbitTheme.displayStyle.copyWith(fontSize: 20, height: 1.2),
+                    style: SwabbitTheme.displayStyle.copyWith(
+                      fontSize: 20,
+                      height: 1.2,
+                    ),
                     children: const [
                       TextSpan(text: 'RTX '),
-                      TextSpan(text: '4090', style: TextStyle(color: SwabbitTheme.accent)),
+                      TextSpan(
+                        text: '4090',
+                        style: TextStyle(color: SwabbitTheme.accent),
+                      ),
                       TextSpan(text: '\nFounders Ed.'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text('24GB GDDR6X · Ottime condizioni', style: TextStyle(fontSize: 13, color: SwabbitTheme.text2)),
+                const Text(
+                  '24GB GDDR6X · Ottime condizioni',
+                  style: TextStyle(fontSize: 13, color: SwabbitTheme.text2),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   '€ ${featured.price.toStringAsFixed(0)}',
-                  style: SwabbitTheme.monoStyle.copyWith(fontSize: 22, color: SwabbitTheme.accent),
+                  style: SwabbitTheme.monoStyle.copyWith(
+                    fontSize: 22,
+                    color: SwabbitTheme.accent,
+                  ),
                 ),
               ],
             ),
             Positioned(
-              top: 0, right: 0,
+              top: 0,
+              right: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: SwabbitTheme.border),
                 ),
                 child: Text(
-                  featured.originalPrice != null ? '−${((1 - featured.price / featured.originalPrice!) * 100).round()}%' : 'TOP',
-                  style: const TextStyle(fontFamily: 'SpaceMono', fontSize: 12, fontWeight: FontWeight.w700, color: SwabbitTheme.green),
+                  featured.originalPrice != null
+                      ? '−${((1 - featured.price / featured.originalPrice!) * 100).round()}%'
+                      : 'TOP',
+                  style: const TextStyle(
+                    fontFamily: 'SpaceMono',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: SwabbitTheme.green,
+                  ),
                 ),
               ),
             ),
@@ -276,7 +374,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Text(title, style: SwabbitTheme.displayStyle.copyWith(fontSize: 17)),
+      child: Text(
+        title,
+        style: SwabbitTheme.displayStyle.copyWith(fontSize: 17),
+      ),
     );
   }
 
@@ -296,25 +397,38 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(decoration: BoxDecoration(gradient: product.thumbGradient)),
-                  Center(child: Text(product.emoji, style: const TextStyle(fontSize: 52))),
+                  Container(
+                    decoration: BoxDecoration(gradient: product.thumbGradient),
+                  ),
+                  Center(
+                    child: Text(
+                      product.emoji,
+                      style: const TextStyle(fontSize: 52),
+                    ),
+                  ),
                   // Fav button
                   Positioned(
-                    top: 8, right: 8,
+                    top: 8,
+                    right: 8,
                     child: GestureDetector(
                       onTap: () => _toggleFavorite(product.id),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        width: 28, height: 28,
+                        width: 28,
+                        height: 28,
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
                           child: Icon(
-                            isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            isFav
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
                             size: 14,
-                            color: isFav ? SwabbitTheme.accent3 : SwabbitTheme.text2,
+                            color: isFav
+                                ? SwabbitTheme.accent3
+                                : SwabbitTheme.text2,
                           ),
                         ),
                       ),
@@ -322,17 +436,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   // Condition badge
                   Positioned(
-                    bottom: 8, left: 8,
+                    bottom: 8,
+                    left: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: product.conditionColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: product.conditionColor.withOpacity(0.3)),
+                        border: Border.all(
+                          color: product.conditionColor.withOpacity(0.3),
+                        ),
                       ),
                       child: Text(
                         product.conditionLabel.toUpperCase(),
-                        style: TextStyle(fontFamily: 'SpaceMono', fontSize: 9, fontWeight: FontWeight.w700, color: product.conditionColor, letterSpacing: 0.5),
+                        style: TextStyle(
+                          fontFamily: 'SpaceMono',
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: product.conditionColor,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ),
@@ -350,19 +476,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       product.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SwabbitTheme.text, height: 1.3),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: SwabbitTheme.text,
+                        height: 1.3,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       '€ ${product.price.toStringAsFixed(0)}',
-                      style: SwabbitTheme.monoStyle.copyWith(fontSize: 15, color: SwabbitTheme.accent),
+                      style: SwabbitTheme.monoStyle.copyWith(
+                        fontSize: 15,
+                        color: SwabbitTheme.accent,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.location_on_outlined, size: 10, color: SwabbitTheme.text3),
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 10,
+                          color: SwabbitTheme.text3,
+                        ),
                         const SizedBox(width: 2),
-                        Text(product.location, style: const TextStyle(fontSize: 11, color: SwabbitTheme.text3)),
+                        Text(
+                          product.location,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: SwabbitTheme.text3,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -386,7 +530,8 @@ class _IconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40, height: 40,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           color: SwabbitTheme.surface2,
           borderRadius: BorderRadius.circular(12),

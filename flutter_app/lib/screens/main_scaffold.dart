@@ -111,8 +111,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                 ),
               ),
               _NavItem(
-                icon: Icons.bookmark_rounded,
-                label: 'Salvati',
+                icon: Icons.message_rounded,
+                label: 'Chat',
                 isActive: _currentIndex == 3,
                 onTap: () => _onNavTap(3),
               ),

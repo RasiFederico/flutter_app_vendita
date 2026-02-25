@@ -70,25 +70,31 @@ class _UserProfileScreenState extends State<UserProfileScreen>
   // ── HELPERS ───────────────────────────────────────────────────────────────
 
   String get _displayName {
+    // Priorità: nome+cognome dal profilo caricato → username → initialName → initialUsername → "Utente"
     if (_profile != null) {
-      final nome = _profile!['nome'] ?? '';
-      final cognome = _profile!['cognome'] ?? '';
+      final nome = (_profile!['nome'] as String? ?? '').trim();
+      final cognome = (_profile!['cognome'] as String? ?? '').trim();
       final full = '$nome $cognome'.trim();
       if (full.isNotEmpty) return full;
+      final u = (_profile!['username'] as String? ?? '').trim();
+      if (u.isNotEmpty) return u;
     }
-    return widget.initialName?.isNotEmpty == true
-        ? widget.initialName!
-        : 'Utente';
+    if (widget.initialName?.isNotEmpty == true) return widget.initialName!;
+    if (widget.initialUsername?.isNotEmpty == true) return widget.initialUsername!;
+    return 'Utente';
   }
 
   String get _username {
-    final u = _profile?['username'] ?? widget.initialUsername ?? '';
-    return u.toString();
+    final u = (_profile?['username'] as String? ?? '').trim();
+    if (u.isNotEmpty) return u;
+    return (widget.initialUsername ?? '').trim();
   }
 
   String? get _avatarUrl {
-    final url = _profile?['avatar_url'] ?? widget.initialAvatarUrl;
-    return url?.toString();
+    final url = (_profile?['avatar_url'] as String? ?? '').trim();
+    if (url.isNotEmpty) return url;
+    final init = (widget.initialAvatarUrl ?? '').trim();
+    return init.isNotEmpty ? init : null;
   }
 
   String get _initials {

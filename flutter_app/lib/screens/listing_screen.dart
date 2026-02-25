@@ -397,18 +397,25 @@ class _ListingScreenState extends State<ListingScreen> {
   // ── SELLER CARD (cliccabile) ───────────────────────────────────────────────
 
   Widget _buildSellerCard() {
-    // Determina il nome da mostrare: prova sellerName, poi username, poi userId parziale
-    final name = (_listing.sellerName?.isNotEmpty == true)
-        ? _listing.sellerName!
-        : (_listing.sellerUsername?.isNotEmpty == true)
-            ? _listing.sellerUsername!
-            : 'Utente ${_listing.userId.substring(0, 6)}';
+    // Priorità nome: nome+cognome → username → "Utente"
+    final sellerName = _listing.sellerName ?? '';
+    final sellerUsername = _listing.sellerUsername ?? '';
+    final name = sellerName.isNotEmpty
+        ? sellerName
+        : sellerUsername.isNotEmpty
+            ? sellerUsername
+            : 'Utente';
 
-    final username = _listing.sellerUsername?.isNotEmpty == true
-        ? '@${_listing.sellerUsername}'
-        : null;
+    // Mostra @username solo se il nome visualizzato è diverso dall'username
+    final showAt = sellerUsername.isNotEmpty && name != sellerUsername;
+    final username = showAt ? '@$sellerUsername' : null;
 
-    final initials = name.trim().split(' ').take(2).map((w) => w.isNotEmpty ? w[0] : '').join();
+    final words = name.trim().split(' ');
+    final initials = words
+        .take(2)
+        .map((w) => w.isNotEmpty ? w[0] : '')
+        .join()
+        .toUpperCase();
     final avatarUrl = _listing.sellerAvatarUrl;
 
     // Se è il proprio annuncio non mostriamo il tasto profilo

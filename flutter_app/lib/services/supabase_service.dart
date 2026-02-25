@@ -2,10 +2,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/listing.dart';
 
-
 // ─── Costanti — sostituisci con i tuoi valori da supabase.com ────────────────
-const String supabaseUrl = 'https://rtqwvtwhrsduoxgmemti.supabase.co/';
-const String supabaseAnonKey = 'sb_publishable_TpFI6Rlemm4Zi6OKzYv_Cw_0xB65Mom'; // anon/public key
+const String supabaseUrl = '';
+const String supabaseAnonKey = ''; // anon/public key
 
 /// Nome del bucket Storage per le immagini degli annunci
 const String _listingBucket = 'listing-images';
@@ -80,7 +79,7 @@ class SupabaseService {
     if (user == null) return null;
     final res = await client
         .from('profiles')
-        .select()
+        .select('id, nome, cognome, username, bio, luogo, telefono, avatar_url, rating, sales_count, created_at, updated_at')
         .eq('id', user.id)
         .maybeSingle();
     return res;
@@ -90,7 +89,7 @@ class SupabaseService {
   static Future<Map<String, dynamic>?> getUserProfileById(String userId) async {
     final res = await client
         .from('profiles')
-        .select()
+        .select('id, nome, cognome, username, bio, luogo, telefono, avatar_url, rating, sales_count, created_at, updated_at')
         .eq('id', userId)
         .maybeSingle();
     return res;
