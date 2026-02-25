@@ -8,33 +8,33 @@ enum ListingCondition { newItem, used, refurbished }
 extension ListingConditionX on ListingCondition {
   String get dbValue {
     switch (this) {
-      case ListingCondition.newItem:    return 'new';
-      case ListingCondition.used:       return 'used';
+      case ListingCondition.newItem:     return 'new';
+      case ListingCondition.used:        return 'used';
       case ListingCondition.refurbished: return 'refurbished';
     }
   }
 
   String get label {
     switch (this) {
-      case ListingCondition.newItem:    return 'Nuovo';
-      case ListingCondition.used:       return 'Usato';
+      case ListingCondition.newItem:     return 'Nuovo';
+      case ListingCondition.used:        return 'Usato';
       case ListingCondition.refurbished: return 'Ricondizionato';
     }
   }
 
   Color get color {
     switch (this) {
-      case ListingCondition.newItem:    return SwabbitTheme.green;
-      case ListingCondition.used:       return SwabbitTheme.accent;
+      case ListingCondition.newItem:     return SwabbitTheme.green;
+      case ListingCondition.used:        return SwabbitTheme.accent;
       case ListingCondition.refurbished: return SwabbitTheme.yellow;
     }
   }
 
   static ListingCondition fromDb(String? v) {
     switch (v) {
-      case 'new':          return ListingCondition.newItem;
-      case 'refurbished':  return ListingCondition.refurbished;
-      default:             return ListingCondition.used;
+      case 'new':         return ListingCondition.newItem;
+      case 'refurbished': return ListingCondition.refurbished;
+      default:            return ListingCondition.used;
     }
   }
 }
@@ -90,7 +90,7 @@ class Listing {
   final bool hasShipping;
   final bool isNegotiable;
   final ListingStatus status;
-  final List<String> images;   // public URLs from Supabase Storage
+  final List<String> images; // public URLs from Supabase Storage
   final int views;
   final int likes;
   final DateTime createdAt;
@@ -99,6 +99,7 @@ class Listing {
   // Joined from profiles (nullable — dipende dalla query)
   final String? sellerName;
   final String? sellerUsername;
+  final String? sellerAvatarUrl; // ← NUOVO
   final double sellerRating;
   final int sellerSales;
 
@@ -122,6 +123,7 @@ class Listing {
     this.updatedAt,
     this.sellerName,
     this.sellerUsername,
+    this.sellerAvatarUrl,
     this.sellerRating = 5.0,
     this.sellerSales = 0,
   });
@@ -129,12 +131,12 @@ class Listing {
   /// Costruisce un Listing dalla riga restituita da Supabase.
   /// Supporta join opzionale con `profiles`.
   factory Listing.fromMap(Map<String, dynamic> map) {
-    // join con profiles (se presente)
     final profile = map['profiles'] as Map<String, dynamic>?;
     final String sellerName = profile != null
         ? '${profile['nome'] ?? ''} ${profile['cognome'] ?? ''}'.trim()
         : '';
     final String sellerUsername = profile?['username'] ?? '';
+    final String? sellerAvatarUrl = profile?['avatar_url'] as String?;
     final double sellerRating =
         (profile?['rating'] as num?)?.toDouble() ?? 5.0;
     final int sellerSales = (profile?['sales_count'] as num?)?.toInt() ?? 0;
@@ -154,10 +156,7 @@ class Listing {
       hasShipping: map['has_shipping'] as bool? ?? false,
       isNegotiable: map['is_negotiable'] as bool? ?? false,
       status: ListingStatusX.fromDb(map['status'] as String?),
-      images: (map['images'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
+      images: (map['images'] as List?)?.map((e) => e.toString()).toList() ?? [],
       views: (map['views'] as num?)?.toInt() ?? 0,
       likes: (map['likes'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
@@ -166,12 +165,12 @@ class Listing {
           : null,
       sellerName: sellerName,
       sellerUsername: sellerUsername,
+      sellerAvatarUrl: sellerAvatarUrl,
       sellerRating: sellerRating,
       sellerSales: sellerSales,
     );
   }
 
-  /// Converte in Map per l'insert/update su Supabase.
   Map<String, dynamic> toInsertMap() => {
         'user_id': userId,
         'title': title,
@@ -187,24 +186,31 @@ class Listing {
         'images': images,
       };
 
-  /// Emoji suggerita in base alla categoria
   String get categoryEmoji {
     switch (category?.toLowerCase()) {
-      case 'gpu':        return '🎮';
-      case 'cpu':        return '⚙️';
-      case 'ram':        return '🧠';
-      case 'storage':    return '💾';
+      case 'gpu':         return '🎮';
+      case 'cpu':         return '⚙️';
+      case 'ram':         return '🧠';
+      case 'storage':     return '💾';
       case 'motherboard': return '🔌';
-      case 'cooling':    return '❄️';
-      case 'psu':        return '🔋';
-      case 'case':       return '🖥️';
-      case 'monitor':    return '🖵';
+      case 'cooling':     return '❄️';
+      case 'psu':         return '🔋';
+      case 'case':        return '🖥️';
+      case 'monitor':     return '🖵';
       case 'periferiche': return '🖱️';
-      default:           return '📦';
+      default:            return '📦';
     }
   }
 
-  Listing copyWith({ListingStatus? status, int? views, int? likes}) => Listing(
+  Listing copyWith({
+    ListingStatus? status,
+    int? views,
+    int? likes,
+    String? sellerName,
+    String? sellerUsername,
+    String? sellerAvatarUrl,
+  }) =>
+      Listing(
         id: id,
         userId: userId,
         title: title,
@@ -222,8 +228,9 @@ class Listing {
         likes: likes ?? this.likes,
         createdAt: createdAt,
         updatedAt: updatedAt,
-        sellerName: sellerName,
-        sellerUsername: sellerUsername,
+        sellerName: sellerName ?? this.sellerName,
+        sellerUsername: sellerUsername ?? this.sellerUsername,
+        sellerAvatarUrl: sellerAvatarUrl ?? this.sellerAvatarUrl,
         sellerRating: sellerRating,
         sellerSales: sellerSales,
       );

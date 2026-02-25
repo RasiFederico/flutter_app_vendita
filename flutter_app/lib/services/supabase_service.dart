@@ -2,12 +2,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/listing.dart';
 
+
 // ─── Costanti — sostituisci con i tuoi valori da supabase.com ────────────────
-const String supabaseUrl = '';
-const String supabaseAnonKey = ''; // anon/public key
+const String supabaseUrl = 'https://rtqwvtwhrsduoxgmemti.supabase.co/';
+const String supabaseAnonKey = 'sb_publishable_TpFI6Rlemm4Zi6OKzYv_Cw_0xB65Mom'; // anon/public key
 
 /// Nome del bucket Storage per le immagini degli annunci
 const String _listingBucket = 'listing-images';
+
+/// Nome del bucket Storage per gli avatar utente
+const String _avatarBucket = 'avatars';
 
 class SupabaseService {
   SupabaseService._();
@@ -19,7 +23,6 @@ class SupabaseService {
   static Session? get currentSession => client.auth.currentSession;
   static bool get isLoggedIn => currentUser != null;
 
-  /// Registrazione con email + password. Crea automaticamente il profilo.
   static Future<AuthResponse> signUp({
     required String email,
     required String password,
@@ -43,7 +46,6 @@ class SupabaseService {
     return res;
   }
 
-  /// Login con email + password
   static Future<AuthResponse> signIn({
     required String email,
     required String password,
@@ -51,7 +53,6 @@ class SupabaseService {
     return client.auth.signInWithPassword(email: email, password: password);
   }
 
-  /// Logout
   static Future<void> signOut() async {
     await client.auth.signOut();
   }
@@ -85,7 +86,17 @@ class SupabaseService {
     return res;
   }
 
-  /// Aggiorna il profilo
+  /// Legge il profilo pubblico di un qualsiasi utente per id
+  static Future<Map<String, dynamic>?> getUserProfileById(String userId) async {
+    final res = await client
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .maybeSingle();
+    return res;
+  }
+
+  /// Aggiorna il profilo (opzionalmente con avatar_url)
   static Future<void> updateProfile({
     required String nome,
     required String cognome,
@@ -93,6 +104,7 @@ class SupabaseService {
     String? bio,
     String? luogo,
     String? telefono,
+    String? avatarUrl,
   }) async {
     final user = currentUser;
     if (user == null) return;
@@ -104,14 +116,13 @@ class SupabaseService {
       'bio': bio,
       'luogo': luogo,
       'telefono': telefono,
+      if (avatarUrl != null) 'avatar_url': avatarUrl,
       'updated_at': DateTime.now().toIso8601String(),
     });
   }
 
   // ── ANNUNCI (LISTINGS) ────────────────────────────────────────────────────
 
-  /// Crea un nuovo annuncio per l'utente corrente.
-  /// Ritorna il Listing creato con l'id assegnato da Supabase.
   static Future<Listing> createListing({
     required String title,
     required String description,
@@ -142,34 +153,30 @@ class SupabaseService {
       'images': images,
     };
 
-    final res = await client
-        .from('listings')
-        .insert(payload)
-        .select()
-        .single();
-
+    final res = await client.from('listings').insert(payload).select().single();
     return Listing.fromMap(res);
   }
 
   /// Recupera tutti gli annunci dell'utente corrente (tutti gli status).
+  /// Include il join con profiles per mostrare il nome del venditore.
   static Future<List<Listing>> getMyListings() async {
     final user = currentUser;
     if (user == null) return [];
 
     final res = await client
         .from('listings')
-        .select()
+        .select('*, profiles(nome, cognome, username, avatar_url, rating, sales_count)')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
     return (res as List).map((e) => Listing.fromMap(e)).toList();
   }
 
-  /// Recupera gli annunci di un altro utente (solo status active).
+  /// Recupera gli annunci attivi di un utente specifico (per profilo pubblico).
   static Future<List<Listing>> getUserListings(String userId) async {
     final res = await client
         .from('listings')
-        .select()
+        .select('*, profiles(nome, cognome, username, avatar_url, rating, sales_count)')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('created_at', ascending: false);
@@ -177,8 +184,6 @@ class SupabaseService {
     return (res as List).map((e) => Listing.fromMap(e)).toList();
   }
 
-  /// Cerca annunci con testo libero e filtri opzionali.
-  /// Usa ilike su title e description per la ricerca testuale.
   static Future<List<Listing>> searchListings({
     String? query,
     String? category,
@@ -190,11 +195,10 @@ class SupabaseService {
   }) async {
     var q = client
         .from('listings')
-        .select('*, profiles(nome, cognome, username, rating, sales_count)')
+        .select('*, profiles(nome, cognome, username, avatar_url, rating, sales_count)')
         .eq('status', 'active');
 
     if (query != null && query.trim().isNotEmpty) {
-      // Ricerca su title OPPURE description (OR con ilike)
       q = q.or('title.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%');
     }
     if (category != null && category.isNotEmpty) {
@@ -207,18 +211,14 @@ class SupabaseService {
       q = q.ilike('location', '%$location%');
     }
 
-    final res = await q
-        .order('created_at', ascending: false)
-        .limit(limit);
-
+    final res = await q.order('created_at', ascending: false).limit(limit);
     return (res as List).map((e) => Listing.fromMap(e)).toList();
   }
 
-  /// Recupera annunci recenti (home feed).
   static Future<List<Listing>> getRecentListings({int limit = 20}) async {
     final res = await client
         .from('listings')
-        .select('*, profiles(nome, cognome, username, rating, sales_count)')
+        .select('*, profiles(nome, cognome, username, avatar_url, rating, sales_count)')
         .eq('status', 'active')
         .order('created_at', ascending: false)
         .limit(limit);
@@ -226,18 +226,16 @@ class SupabaseService {
     return (res as List).map((e) => Listing.fromMap(e)).toList();
   }
 
-  /// Singolo annuncio con profilo venditore.
   static Future<Listing?> getListingById(String id) async {
     final res = await client
         .from('listings')
-        .select('*, profiles(nome, cognome, username, rating, sales_count)')
+        .select('*, profiles(nome, cognome, username, avatar_url, rating, sales_count)')
         .eq('id', id)
         .maybeSingle();
 
     return res != null ? Listing.fromMap(res) : null;
   }
 
-  /// Aggiorna lo status di un annuncio (solo proprietario).
   static Future<void> updateListingStatus(String id, ListingStatus status) async {
     await client
         .from('listings')
@@ -246,65 +244,95 @@ class SupabaseService {
         .eq('user_id', currentUser!.id);
   }
 
-  /// Elimina un annuncio (solo proprietario).
+  /// Elimina un annuncio e le relative immagini dallo Storage.
   static Future<void> deleteListing(String id) async {
+    final user = currentUser;
+    if (user == null) return;
+
+    // 1. Recupera le URL delle immagini prima di eliminare
+    final row = await client
+        .from('listings')
+        .select('images')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (row != null) {
+      final images = (row['images'] as List?)?.map((e) => e.toString()).toList() ?? [];
+      if (images.isNotEmpty) {
+        // 2. Estrai i path relativi dal bucket (es. "userId/filename.jpg")
+        final paths = images
+            .map((url) {
+              try {
+                final uri = Uri.parse(url);
+                // Il path dopo "/object/public/listing-images/" è il path nel bucket
+                final segments = uri.pathSegments;
+                final bucketIdx = segments.indexOf(_listingBucket);
+                if (bucketIdx >= 0 && bucketIdx + 1 < segments.length) {
+                  return segments.sublist(bucketIdx + 1).join('/');
+                }
+              } catch (_) {}
+              return null;
+            })
+            .whereType<String>()
+            .toList();
+
+        if (paths.isNotEmpty) {
+          try {
+            await client.storage.from(_listingBucket).remove(paths);
+          } catch (_) {
+            // Se il file era già stato rimosso, ignora l'errore
+          }
+        }
+      }
+    }
+
+    // 3. Elimina il record dal database
     await client
         .from('listings')
         .delete()
         .eq('id', id)
-        .eq('user_id', currentUser!.id);
+        .eq('user_id', user.id);
   }
 
   // ── STORAGE IMMAGINI ──────────────────────────────────────────────────────
 
-  /// Carica un'immagine nel bucket 'listing-images'.
-  /// Accetta un [XFile] da image_picker — funziona su iOS, Android e Web.
-  /// Ritorna la URL pubblica del file.
   static Future<String> uploadListingImage(XFile xfile) async {
     final user = currentUser;
     if (user == null) throw Exception('Devi essere loggato per caricare immagini.');
 
-    final ext = xfile.path.contains('.')
-        ? xfile.path.split('.').last.toLowerCase()
-        : 'jpg';
-    final path = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
-
-    // readAsBytes() funziona su tutte le piattaforme (niente dart:io)
     final bytes = await xfile.readAsBytes();
+    final ext = xfile.name.split('.').last.toLowerCase();
+    final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+    final path = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
 
     await client.storage
         .from(_listingBucket)
-        .uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: _mimeType(ext),
-            upsert: false,
-          ),
-        );
+        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
 
     return client.storage.from(_listingBucket).getPublicUrl(path);
   }
 
-  /// Elimina una o più immagini dallo storage dato il path pubblico.
-  static Future<void> deleteListingImages(List<String> publicUrls) async {
-    final paths = publicUrls.map((url) {
-      // Estrae il path relativo dalla URL pubblica
-      final marker = '$_listingBucket/';
-      final idx = url.indexOf(marker);
-      return idx >= 0 ? url.substring(idx + marker.length) : url;
-    }).toList();
+  // ── STORAGE AVATAR ────────────────────────────────────────────────────────
 
-    await client.storage.from(_listingBucket).remove(paths);
-  }
+  /// Carica/sostituisce la foto profilo dell'utente corrente.
+  /// Ritorna la URL pubblica.
+  static Future<String> uploadProfileAvatar(XFile xfile) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Devi essere loggato per caricare un avatar.');
 
-  static String _mimeType(String ext) {
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg': return 'image/jpeg';
-      case 'png':  return 'image/png';
-      case 'webp': return 'image/webp';
-      default:     return 'application/octet-stream';
-    }
+    final bytes = await xfile.readAsBytes();
+    final ext = xfile.name.split('.').last.toLowerCase();
+    final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+    // Usa sempre lo stesso filename così sovrascrive il vecchio avatar
+    final path = '${user.id}/avatar.$ext';
+
+    await client.storage
+        .from(_avatarBucket)
+        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
+
+    // Aggiungi un cache-buster per forzare il refresh dell'immagine
+    final url = client.storage.from(_avatarBucket).getPublicUrl(path);
+    return '$url?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 }

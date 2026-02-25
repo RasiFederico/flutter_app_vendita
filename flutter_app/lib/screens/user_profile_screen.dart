@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/listing.dart';
 import '../services/supabase_service.dart';
-import 'auth_screen.dart';
-import 'edit_profile_screen.dart';
 import 'listing_screen.dart';
 
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+class UserProfileScreen extends StatefulWidget {
+  final String userId;
+  final String? initialName;
+  final String? initialUsername;
+  final String? initialAvatarUrl;
+
+  const UserProfileScreen({
+    super.key,
+    required this.userId,
+    this.initialName,
+    this.initialUsername,
+    this.initialAvatarUrl,
+  });
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
+class _UserProfileScreenState extends State<UserProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Map<String, dynamic>? _profile;
@@ -43,7 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _loadProfile() async {
     setState(() => _profileLoading = true);
     try {
-      final p = await SupabaseService.getProfile();
+      final p = await SupabaseService.getUserProfileById(widget.userId);
       if (mounted) setState(() => _profile = p);
     } catch (_) {}
     if (mounted) setState(() => _profileLoading = false);
@@ -52,90 +61,48 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _loadListings() async {
     setState(() => _listingsLoading = true);
     try {
-      final lst = await SupabaseService.getMyListings();
+      final lst = await SupabaseService.getUserListings(widget.userId);
       if (mounted) setState(() => _listings = lst);
     } catch (_) {}
     if (mounted) setState(() => _listingsLoading = false);
   }
 
-  Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: SwabbitTheme.surface,
-        title: const Text('Logout',
-            style: TextStyle(
-                fontFamily: 'Syne',
-                color: SwabbitTheme.text,
-                fontWeight: FontWeight.w700)),
-        content: const Text('Vuoi uscire dall\'account?',
-            style: TextStyle(color: SwabbitTheme.text2)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annulla',
-                style: TextStyle(color: SwabbitTheme.text2)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Esci',
-                style: TextStyle(color: SwabbitTheme.accent3)),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await SupabaseService.signOut();
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AuthScreen()),
-        (_) => false,
-      );
-    }
-  }
-
-  Future<void> _openEditProfile() async {
-    if (_profile == null) return;
-    final updated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => EditProfileScreen(profile: _profile!),
-      ),
-    );
-    if (updated == true) await _loadProfile();
-  }
-
-  Future<void> _openListing(Listing listing) async {
-    final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => ListingScreen(listing: listing)),
-    );
-    if (deleted == true) await _loadListings();
-  }
-
-  // ── GETTERS ───────────────────────────────────────────────────────────────
+  // ── HELPERS ───────────────────────────────────────────────────────────────
 
   String get _displayName {
-    if (_profile == null) return 'Utente';
-    final nome = _profile!['nome'] ?? '';
-    final cognome = _profile!['cognome'] ?? '';
-    return '$nome $cognome'.trim();
+    if (_profile != null) {
+      final nome = _profile!['nome'] ?? '';
+      final cognome = _profile!['cognome'] ?? '';
+      final full = '$nome $cognome'.trim();
+      if (full.isNotEmpty) return full;
+    }
+    return widget.initialName?.isNotEmpty == true
+        ? widget.initialName!
+        : 'Utente';
   }
 
-  String get _username => _profile?['username'] ?? '';
+  String get _username {
+    final u = _profile?['username'] ?? widget.initialUsername ?? '';
+    return u.toString();
+  }
+
+  String? get _avatarUrl {
+    final url = _profile?['avatar_url'] ?? widget.initialAvatarUrl;
+    return url?.toString();
+  }
 
   String get _initials {
-    final nome = _profile?['nome'] ?? '';
-    final cognome = _profile?['cognome'] ?? '';
-    final n = nome.isNotEmpty ? nome[0].toUpperCase() : '';
-    final c = cognome.isNotEmpty ? cognome[0].toUpperCase() : '';
-    return '$n$c';
+    final parts = _displayName.trim().split(' ');
+    final first = parts.isNotEmpty && parts[0].isNotEmpty ? parts[0][0] : '';
+    final second = parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '';
+    return ('$first$second').toUpperCase();
   }
 
-  String? get _avatarUrl => _profile?['avatar_url']?.toString();
+  double get _rating =>
+      (_profile?['rating'] as num?)?.toDouble() ?? 5.0;
 
-  int get _activeListings =>
-      _listings.where((l) => l.status == ListingStatus.active).length;
-  int get _soldListings =>
-      _listings.where((l) => l.status == ListingStatus.sold).length;
+  int get _salesCount =>
+      (_profile?['sales_count'] as num?)?.toInt() ?? 0;
 
   // ── BUILD ─────────────────────────────────────────────────────────────────
 
@@ -144,89 +111,76 @@ class _ProfileScreenState extends State<ProfileScreen>
     return Scaffold(
       backgroundColor: SwabbitTheme.bg,
       body: SafeArea(
-        child: _profileLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: SwabbitTheme.accent))
-            : RefreshIndicator(
+        child: Column(
+          children: [
+            _buildAppBar(),
+            Expanded(
+              child: RefreshIndicator(
                 color: SwabbitTheme.accent,
                 backgroundColor: SwabbitTheme.surface,
                 onRefresh: _refresh,
-                child: NestedScrollView(
-                  headerSliverBuilder: (context, innerBoxScrolled) => [
-                    SliverToBoxAdapter(
-                      child: Column(
-                        children: [
-                          _buildHeader(),
-                          _buildAvatar(),
-                          const SizedBox(height: 12),
-                          _buildNameSection(),
-                          const SizedBox(height: 16),
-                          _buildStats(),
-                          _buildTabBar(),
+                child: _profileLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: SwabbitTheme.accent))
+                    : NestedScrollView(
+                        headerSliverBuilder: (ctx, _) => [
+                          SliverToBoxAdapter(
+                            child: Column(
+                              children: [
+                                _buildAvatar(),
+                                const SizedBox(height: 12),
+                                _buildNameSection(),
+                                const SizedBox(height: 16),
+                                _buildStats(),
+                                _buildTabBar(),
+                              ],
+                            ),
+                          ),
                         ],
+                        body: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildListingsTab(),
+                            _buildReviewsTab(),
+                            _buildAboutTab(),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                  body: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildListingsTab(),
-                      _buildReviewsTab(),
-                      _buildAboutTab(),
-                    ],
-                  ),
-                ),
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ── HEADER ────────────────────────────────────────────────────────────────
-
-  Widget _buildHeader() {
+  Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text('Profilo',
-              style: TextStyle(
-                  fontFamily: 'Syne',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20,
-                  color: SwabbitTheme.text)),
-          Row(
-            children: [
-              // Edit button
-              GestureDetector(
-                onTap: _openEditProfile,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: SwabbitTheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: SwabbitTheme.border),
-                  ),
-                  child: const Icon(Icons.edit_outlined,
-                      size: 18, color: SwabbitTheme.text2),
-                ),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: SwabbitTheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: SwabbitTheme.border),
               ),
-              const SizedBox(width: 8),
-              // Logout button
-              GestureDetector(
-                onTap: _logout,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: SwabbitTheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: SwabbitTheme.border),
-                  ),
-                  child: const Icon(Icons.logout_rounded,
-                      size: 18, color: SwabbitTheme.text2),
-                ),
-              ),
-            ],
+              child: const Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 18, color: SwabbitTheme.text),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'Profilo venditore',
+            style: TextStyle(
+                fontFamily: 'Syne',
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                color: SwabbitTheme.text),
           ),
         ],
       ),
@@ -236,50 +190,28 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _buildAvatar() {
     return Padding(
       padding: const EdgeInsets.only(top: 20),
-      child: GestureDetector(
-        onTap: _openEditProfile,
-        child: Stack(
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                gradient: SwabbitTheme.accentGrad,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                      color: SwabbitTheme.accent.withOpacity(0.35),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8))
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: _avatarUrl != null
-                    ? Image.network(
-                        _avatarUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _initialsWidget(),
-                      )
-                    : _initialsWidget(),
-              ),
-            ),
-            // Camera icon badge
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: SwabbitTheme.accent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: SwabbitTheme.bg, width: 2),
-                ),
-                child: const Icon(Icons.camera_alt_rounded,
-                    size: 12, color: Colors.black),
-              ),
-            ),
+      child: Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          gradient: SwabbitTheme.accentGrad,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+                color: SwabbitTheme.accent.withOpacity(0.35),
+                blurRadius: 24,
+                offset: const Offset(0, 8))
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: _avatarUrl != null
+              ? Image.network(
+                  _avatarUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _initialsWidget(),
+                )
+              : _initialsWidget(),
         ),
       ),
     );
@@ -307,10 +239,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                 fontWeight: FontWeight.w800,
                 fontSize: 20,
                 color: SwabbitTheme.text)),
-        if (_username.isNotEmpty)
+        if (_username.isNotEmpty) ...[
+          const SizedBox(height: 2),
           Text('@$_username',
-              style: const TextStyle(
-                  fontSize: 13, color: SwabbitTheme.text3)),
+              style: const TextStyle(fontSize: 13, color: SwabbitTheme.text3)),
+        ],
         if (_profile?['bio'] != null &&
             (_profile!['bio'] as String).isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -340,23 +273,22 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildStats() {
-    final rating = (_profile?['rating'] as num?)?.toDouble() ?? 5.0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
           _StatBox(
-              value: _activeListings.toString(),
-              label: 'ATTIVI',
+              value: _listings.length.toString(),
+              label: 'ANNUNCI',
               color: SwabbitTheme.accent),
           const SizedBox(width: 10),
           _StatBox(
-              value: _soldListings.toString(),
-              label: 'VENDUTI',
+              value: _salesCount.toString(),
+              label: 'VENDITE',
               color: SwabbitTheme.green),
           const SizedBox(width: 10),
           _StatBox(
-              value: rating.toStringAsFixed(1),
+              value: _rating.toStringAsFixed(1),
               label: 'RATING',
               color: SwabbitTheme.yellow),
         ],
@@ -365,7 +297,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildTabBar() {
-    final tabs = ['Annunci', 'Recensioni', 'Su di me'];
+    final tabs = ['Annunci', 'Recensioni', 'Info'];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Container(
@@ -427,16 +359,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               children: [
                 Text('📦', style: TextStyle(fontSize: 48)),
                 SizedBox(height: 12),
-                Text('Nessun annuncio',
+                Text('Nessun annuncio attivo',
                     style: TextStyle(
                         fontFamily: 'Syne',
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
                         color: SwabbitTheme.text)),
-                SizedBox(height: 6),
-                Text('Pubblica il tuo primo annuncio!',
-                    style:
-                        TextStyle(fontSize: 13, color: SwabbitTheme.text2)),
               ],
             ),
           ),
@@ -453,12 +381,17 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildListingCard(Listing listing) {
     return GestureDetector(
-      onTap: () => _openListing(listing),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => ListingScreen(listing: listing)),
+      ),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: SwabbitTheme.cardDecoration(),
         child: Row(
           children: [
+            // Thumbnail
             Container(
               width: 64,
               height: 64,
@@ -498,19 +431,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: listing.status.color.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(listing.status.label,
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: listing.status.color)),
-                      ),
+                      Icon(Icons.location_on_outlined,
+                          size: 11, color: SwabbitTheme.text3),
+                      const SizedBox(width: 2),
+                      Text(listing.location,
+                          style: const TextStyle(
+                              fontSize: 11, color: SwabbitTheme.text3)),
                       const Spacer(),
                       Icon(Icons.visibility_outlined,
                           size: 11, color: SwabbitTheme.text3),
@@ -533,85 +459,82 @@ class _ProfileScreenState extends State<ProfileScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       children: [
-        _buildReviewCard(),
+        // Rating summary
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: SwabbitTheme.cardDecoration(),
+          child: Row(
+            children: [
+              Column(
+                children: [
+                  Text(
+                    _rating.toStringAsFixed(1),
+                    style: const TextStyle(
+                        fontFamily: 'Syne',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 40,
+                        color: SwabbitTheme.text),
+                  ),
+                  Row(
+                    children: List.generate(
+                      5,
+                      (i) => Icon(
+                        Icons.star_rounded,
+                        size: 16,
+                        color: i < _rating.round()
+                            ? SwabbitTheme.yellow
+                            : SwabbitTheme.border,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_salesCount} ${_salesCount == 1 ? 'vendita' : 'vendite'}',
+                    style: const TextStyle(
+                        fontSize: 11, color: SwabbitTheme.text3),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 20),
+              const Expanded(
+                child: Text(
+                  'Le recensioni saranno disponibili dopo le prime transazioni.',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: SwabbitTheme.text2,
+                      height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildReviewCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: SwabbitTheme.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: SwabbitTheme.surface3,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Center(
-                    child: Text('A',
-                        style: TextStyle(
-                            fontFamily: 'Syne',
-                            fontWeight: FontWeight.w700,
-                            color: SwabbitTheme.text))),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Acquirente',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: SwabbitTheme.text,
-                          fontSize: 13)),
-                  Row(
-                    children: List.generate(
-                        5,
-                        (j) => const Text('★',
-                            style: TextStyle(
-                                color: SwabbitTheme.yellow,
-                                fontSize: 11))),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              const Text('2 giorni fa',
-                  style:
-                      TextStyle(fontSize: 11, color: SwabbitTheme.text3)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-              'Venditore affidabile, prodotto perfettamente imballato. Spedizione veloce!',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: SwabbitTheme.text2,
-                  height: 1.4)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAboutTab() {
-    final user = SupabaseService.currentUser;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       children: [
-        _infoRow(Icons.email_outlined, 'Email', user?.email ?? '—'),
-        if (_profile?['telefono'] != null &&
-            (_profile!['telefono'] as String).isNotEmpty)
-          _infoRow(
-              Icons.phone_outlined, 'Telefono', _profile!['telefono']),
         if (_profile?['luogo'] != null &&
             (_profile!['luogo'] as String).isNotEmpty)
           _infoRow(
               Icons.location_on_outlined, 'Luogo', _profile!['luogo']),
+        if (_profile?['bio'] != null &&
+            (_profile!['bio'] as String).isNotEmpty)
+          _infoRow(Icons.info_outline_rounded, 'Bio', _profile!['bio']),
+        _infoRow(
+          Icons.calendar_today_outlined,
+          'Membro dal',
+          _profile?['created_at'] != null
+              ? _formatDate(_profile!['created_at'])
+              : '—',
+        ),
+        _infoRow(
+          Icons.sell_outlined,
+          'Vendite completate',
+          '$_salesCount',
+        ),
       ],
     );
   }
@@ -647,7 +570,22 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
     );
   }
+
+  String _formatDate(String iso) {
+    try {
+      final d = DateTime.parse(iso);
+      const months = [
+        'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
+        'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+      ];
+      return '${months[d.month - 1]} ${d.year}';
+    } catch (_) {
+      return '—';
+    }
+  }
 }
+
+// ── HELPER WIDGETS ────────────────────────────────────────────────────────────
 
 class _StatBox extends StatelessWidget {
   final String value;

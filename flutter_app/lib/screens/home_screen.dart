@@ -11,12 +11,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _refreshing = false;
   int _selectedCategoryIndex = -1;
   final Set<String> _favorites = {};
 
   void _toggleFavorite(String id) => setState(() {
     _favorites.contains(id) ? _favorites.remove(id) : _favorites.add(id);
   });
+
+  Future<void> _refresh() async {
+    setState(() => _refreshing = true);
+    await Future.delayed(const Duration(seconds: 1));
+    if (mounted) setState(() => _refreshing = false);
+  }
 
   void _openProduct(BuildContext context, Product product) {
     Navigator.push(
@@ -41,6 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: SwabbitTheme.bg,
       body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          color: SwabbitTheme.accent,
+          backgroundColor: SwabbitTheme.surface,
         child: CustomScrollView(
           slivers: [
             // ── HEADER ────────────────────────────────────────────────
@@ -71,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-      ),
+      ),),
     );
   }
 
