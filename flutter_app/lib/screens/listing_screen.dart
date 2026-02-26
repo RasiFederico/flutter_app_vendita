@@ -1,8 +1,12 @@
+// lib/screens/listing_screen.dart
+
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/listing.dart';
 import '../services/supabase_service.dart';
 import 'user_profile_screen.dart';
+import 'chat_screen.dart'; // ← NUOVO
+import '../models/chat.dart'; // ← NUOVO
 
 class ListingScreen extends StatefulWidget {
   final Listing listing;
@@ -30,8 +34,7 @@ class _ListingScreenState extends State<ListingScreen> {
     try {
       await SupabaseService.client
           .from('listings')
-          .update({'views': _listing.views + 1})
-          .eq('id', _listing.id);
+          .update({'views': _listing.views + 1}).eq('id', _listing.id);
     } catch (_) {}
   }
 
@@ -46,8 +49,32 @@ class _ListingScreenState extends State<ListingScreen> {
     if (mounted) setState(() => _refreshing = false);
   }
 
-  bool get _isOwner =>
-      SupabaseService.currentUser?.id == _listing.userId;
+  bool get _isOwner => SupabaseService.currentUser?.id == _listing.userId;
+
+  // ── CONTATTA VENDITORE ────────────────────────────────────────────────────
+
+  Future<void> _contactSeller() async {
+    final user = SupabaseService.currentUser;
+    if (user == null) {
+      _snack('Devi essere loggato per scrivere al venditore', error: true);
+      return;
+    }
+    if (user.id == _listing.userId) return; // non scrivere a te stesso
+
+    try {
+      final conv = await SupabaseService.getOrCreateConversation(
+        sellerId: _listing.userId,
+        listingId: _listing.id,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(conversation: conv)),
+      );
+    } catch (e) {
+      if (mounted) _snack('Errore: $e', error: true);
+    }
+  }
 
   // ── STATUS MANAGEMENT ─────────────────────────────────────────────────────
 
@@ -232,7 +259,9 @@ class _ListingScreenState extends State<ListingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  _isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  _isFav
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
                   size: 18,
                   color: _isFav ? SwabbitTheme.accent3 : Colors.white,
                 ),
@@ -313,8 +342,7 @@ class _ListingScreenState extends State<ListingScreen> {
                   decoration: TextDecoration.lineThrough)),
           const SizedBox(width: 6),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: SwabbitTheme.green.withOpacity(0.15),
               borderRadius: BorderRadius.circular(6),
@@ -394,10 +422,9 @@ class _ListingScreenState extends State<ListingScreen> {
     );
   }
 
-  // ── SELLER CARD (cliccabile) ───────────────────────────────────────────────
+  // ── SELLER CARD ───────────────────────────────────────────────────────────
 
   Widget _buildSellerCard() {
-    // Priorità nome: nome+cognome → username → "Utente"
     final sellerName = _listing.sellerName ?? '';
     final sellerUsername = _listing.sellerUsername ?? '';
     final name = sellerName.isNotEmpty
@@ -406,19 +433,13 @@ class _ListingScreenState extends State<ListingScreen> {
             ? sellerUsername
             : 'Utente';
 
-    // Mostra @username solo se il nome visualizzato è diverso dall'username
     final showAt = sellerUsername.isNotEmpty && name != sellerUsername;
     final username = showAt ? '@$sellerUsername' : null;
 
     final words = name.trim().split(' ');
-    final initials = words
-        .take(2)
-        .map((w) => w.isNotEmpty ? w[0] : '')
-        .join()
-        .toUpperCase();
+    final initials =
+        words.take(2).map((w) => w.isNotEmpty ? w[0] : '').join().toUpperCase();
     final avatarUrl = _listing.sellerAvatarUrl;
-
-    // Se è il proprio annuncio non mostriamo il tasto profilo
     final isOwnListing = _isOwner;
 
     return GestureDetector(
@@ -428,7 +449,6 @@ class _ListingScreenState extends State<ListingScreen> {
         decoration: SwabbitTheme.cardDecoration(),
         child: Row(
           children: [
-            // Avatar
             Container(
               width: 48,
               height: 48,
@@ -464,8 +484,7 @@ class _ListingScreenState extends State<ListingScreen> {
                   if (username != null)
                     Text(username,
                         style: const TextStyle(
-                            fontSize: 12,
-                            color: SwabbitTheme.text3)),
+                            fontSize: 12, color: SwabbitTheme.text3)),
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -525,7 +544,6 @@ class _ListingScreenState extends State<ListingScreen> {
                   fontSize: 14,
                   color: SwabbitTheme.text)),
           const SizedBox(height: 12),
-          // Status buttons
           Row(
             children: ListingStatus.values.map((s) {
               final active = _listing.status == s;
@@ -559,7 +577,6 @@ class _ListingScreenState extends State<ListingScreen> {
             }).toList(),
           ),
           const SizedBox(height: 12),
-          // Delete
           GestureDetector(
             onTap: _deleteListing,
             child: Container(
@@ -612,7 +629,7 @@ class _ListingScreenState extends State<ListingScreen> {
               child: _ActionButton(
                 label: 'Contatta venditore',
                 icon: Icons.chat_bubble_outline_rounded,
-                onTap: () {},
+                onTap: _contactSeller, // ← COLLEGATO
                 color: SwabbitTheme.accent,
                 textColor: Colors.black,
               ),
@@ -697,7 +714,6 @@ class _ActionButton extends StatelessWidget {
   final Color color;
   final Color textColor;
   final Color? borderColor;
-
   const _ActionButton({
     required this.label,
     required this.icon,
@@ -712,24 +728,24 @@ class _ActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SwabbitTheme.radiusSm),
           border:
               borderColor != null ? Border.all(color: borderColor!) : null,
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: textColor),
+            Icon(icon, color: textColor, size: 18),
             const SizedBox(width: 8),
             Text(label,
                 style: TextStyle(
-                    fontFamily: 'Syne',
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
+                    fontFamily: 'Syne',
                     color: textColor)),
           ],
         ),

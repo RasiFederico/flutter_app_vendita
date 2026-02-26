@@ -1,9 +1,13 @@
+// lib/screens/main_scaffold.dart
+// Sostituisci l'intero file con questo
+
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'profile_screen.dart';
 import 'create_listing_screen.dart';
+import 'chat_list_screen.dart'; // ← NUOVO
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -19,7 +23,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     HomeScreen(),
     SearchScreen(),
     SizedBox(), // sell placeholder — gestito separatamente
-    SizedBox(), // saved placeholder
+    ChatListScreen(), // ← NUOVO
     ProfileScreen(),
   ];
 
@@ -62,7 +66,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Container(
       decoration: BoxDecoration(
         color: SwabbitTheme.surface,
-        border: const Border(top: BorderSide(color: SwabbitTheme.border, width: 0.5)),
+        border:
+            const Border(top: BorderSide(color: SwabbitTheme.border, width: 0.5)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.25),
@@ -111,7 +116,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 ),
               ),
               _NavItem(
-                icon: Icons.message_rounded,
+                icon: Icons.chat_bubble_rounded,
                 label: 'Chat',
                 isActive: _currentIndex == 3,
                 onTap: () => _onNavTap(3),
@@ -155,7 +160,8 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 22,
-                color: isActive ? SwabbitTheme.accent : SwabbitTheme.text3),
+                color:
+                    isActive ? SwabbitTheme.accent : SwabbitTheme.text3),
             const SizedBox(height: 3),
             Text(label,
                 style: TextStyle(
@@ -163,7 +169,8 @@ class _NavItem extends StatelessWidget {
                   fontSize: 10,
                   fontWeight:
                       isActive ? FontWeight.w700 : FontWeight.w500,
-                  color: isActive ? SwabbitTheme.accent : SwabbitTheme.text3,
+                  color:
+                      isActive ? SwabbitTheme.accent : SwabbitTheme.text3,
                 )),
           ],
         ),
