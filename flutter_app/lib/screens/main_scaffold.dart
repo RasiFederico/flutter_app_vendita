@@ -1,5 +1,4 @@
 // lib/screens/main_scaffold.dart
-// Sostituisci l'intero file con questo
 
 import 'package:flutter/material.dart';
 import '../main.dart';
@@ -7,7 +6,7 @@ import 'home_screen.dart';
 import 'search_screen.dart';
 import 'profile_screen.dart';
 import 'create_listing_screen.dart';
-import 'chat_list_screen.dart'; // ← NUOVO
+import 'chat_list_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -19,19 +18,47 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [
-    HomeScreen(),
-    SearchScreen(),
-    SizedBox(), // sell placeholder — gestito separatamente
-    ChatListScreen(), // ← NUOVO
-    ProfileScreen(),
-  ];
+  // Notifiers: ogni volta che si incrementano, la screen corrispondente si ricarica
+  final _homeRefresh    = ValueNotifier<int>(0);
+  final _profileRefresh = ValueNotifier<int>(0);
+
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      HomeScreen(refreshNotifier: _homeRefresh),
+      const SearchScreen(),
+      const SizedBox(), // sell — gestito separatamente
+      const ChatListScreen(),
+      ProfileScreen(refreshNotifier: _profileRefresh),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _homeRefresh.dispose();
+    _profileRefresh.dispose();
+    super.dispose();
+  }
 
   void _onNavTap(int index) {
     if (index == 2) {
       _openCreateListing();
       return;
     }
+
+    // Ogni tap su Home ricarica i preferiti (e qualunque dato futuro)
+    if (index == 0) {
+      _homeRefresh.value++;
+    }
+
+    // Ogni tap su Profilo ricarica dati e annunci
+    if (index == 4) {
+      _profileRefresh.value++;
+    }
+
     setState(() => _currentIndex = index);
   }
 
@@ -66,8 +93,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Container(
       decoration: BoxDecoration(
         color: SwabbitTheme.surface,
-        border:
-            const Border(top: BorderSide(color: SwabbitTheme.border, width: 0.5)),
+        border: const Border(
+            top: BorderSide(color: SwabbitTheme.border, width: 0.5)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.25),
@@ -94,7 +121,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 isActive: _currentIndex == 1,
                 onTap: () => _onNavTap(1),
               ),
-              // Sell button — centrale
+              // Sell button centrale
               GestureDetector(
                 onTap: () => _onNavTap(2),
                 child: Container(
@@ -160,8 +187,7 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 22,
-                color:
-                    isActive ? SwabbitTheme.accent : SwabbitTheme.text3),
+                color: isActive ? SwabbitTheme.accent : SwabbitTheme.text3),
             const SizedBox(height: 3),
             Text(label,
                 style: TextStyle(

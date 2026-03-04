@@ -1,5 +1,6 @@
 // lib/screens/chat_list_screen.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/chat.dart';
@@ -17,22 +18,47 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<Conversation> _conversations = [];
   bool _loading = true;
 
+  StreamSubscription<List<Map<String, dynamic>>>? _realtimeSub;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _subscribeRealtime();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
+  }
+
+  // ── CARICAMENTO ───────────────────────────────────────────────────────────
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loading = true);
     try {
       final res = await SupabaseService.getConversations();
       if (mounted) setState(() => _conversations = res);
     } catch (e) {
       debugPrint('ChatList error: $e');
     }
-    if (mounted) setState(() => _loading = false);
+    if (!silent && mounted) setState(() => _loading = false);
   }
+
+  // ── REALTIME ──────────────────────────────────────────────────────────────
+  // Ogni volta che cambia qualcosa nella tabella conversations (nuovo messaggio
+  // → last_message aggiornato, nuova conversazione, ecc.) ricarica la lista
+  // in modo silenzioso senza mostrare il loader.
+
+  void _subscribeRealtime() {
+    _realtimeSub = SupabaseService.conversationsStream().listen(
+      (_) => _load(silent: true),
+      onError: (e) => debugPrint('ChatList stream error: $e'),
+    );
+  }
+
+  // ── BUILD ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +98,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: SwabbitTheme.border),
             ),
-            child: const Icon(Icons.edit_square, size: 18, color: SwabbitTheme.text2),
+            child: const Icon(Icons.edit_square,
+                size: 18, color: SwabbitTheme.text2),
           ),
         ],
       ),
@@ -82,7 +109,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: SwabbitTheme.accent, strokeWidth: 2),
+        child: CircularProgressIndicator(
+            color: SwabbitTheme.accent, strokeWidth: 2),
       );
     }
     if (_conversations.isEmpty) {
@@ -133,7 +161,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
           const Text(
             'Contatta un venditore da un annuncio\nper iniziare una conversazione.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: SwabbitTheme.text2, height: 1.5),
+            style: TextStyle(
+                fontSize: 13, color: SwabbitTheme.text2, height: 1.5),
           ),
         ],
       ),
@@ -144,11 +173,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ChatScreen(conversation: conv)),
-    ).then((_) => _load());
+    );
+    // Non serve .then(_load) perché il realtime aggiornerà automaticamente
   }
 }
 
-// ─── TILE ────────────────────────────────────────────────────────────────────
+// ─── TILE ─────────────────────────────────────────────────────────────────────
 
 class _ConversationTile extends StatelessWidget {
   final Conversation conversation;
@@ -176,7 +206,7 @@ class _ConversationTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Avatar
+            // Avatar con badge annuncio
             Stack(
               children: [
                 Container(
@@ -198,25 +228,26 @@ class _ConversationTile extends StatelessWidget {
                         )
                       : _AvatarInitial(initials),
                 ),
-                // Listing thumbnail badge
+                // Thumb annuncio (badge in basso a destra)
                 if (hasThumb)
                   Positioned(
-                    right: -2,
                     bottom: -2,
+                    right: -2,
                     child: Container(
-                      width: 22,
-                      height: 22,
+                      width: 20,
+                      height: 20,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: SwabbitTheme.bg, width: 1.5),
+                        border: Border.all(
+                            color: SwabbitTheme.bg, width: 1.5),
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4.5),
+                        borderRadius: BorderRadius.circular(5),
                         child: Image.network(
-                          conv.listingImages![0],
+                          conv.listingImages!.first,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                              color: SwabbitTheme.surface3),
+                          errorBuilder: (_, __, ___) =>
+                              Container(color: SwabbitTheme.surface3),
                         ),
                       ),
                     ),
@@ -224,6 +255,7 @@ class _ConversationTile extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 12),
+            // Testo
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,16 +263,13 @@ class _ConversationTile extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          name,
-                          style: const TextStyle(
-                            fontFamily: 'Syne',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                            color: SwabbitTheme.text,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: Text(name,
+                            style: const TextStyle(
+                                fontFamily: 'Syne',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: SwabbitTheme.text),
+                            overflow: TextOverflow.ellipsis),
                       ),
                       if (conv.lastMessageAt != null)
                         Text(

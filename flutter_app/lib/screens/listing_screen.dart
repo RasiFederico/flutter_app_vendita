@@ -5,8 +5,8 @@ import '../main.dart';
 import '../models/listing.dart';
 import '../services/supabase_service.dart';
 import 'user_profile_screen.dart';
-import 'chat_screen.dart'; // ← NUOVO
-import '../models/chat.dart'; // ← NUOVO
+import 'chat_screen.dart';
+import '../models/chat.dart';
 
 class ListingScreen extends StatefulWidget {
   final Listing listing;
@@ -18,6 +18,7 @@ class ListingScreen extends StatefulWidget {
 
 class _ListingScreenState extends State<ListingScreen> {
   bool _isFav = false;
+  bool _favLoading = false;
   int _imageIndex = 0;
   bool _descExpanded = false;
   late Listing _listing;
@@ -28,6 +29,15 @@ class _ListingScreenState extends State<ListingScreen> {
     super.initState();
     _listing = widget.listing;
     _trackView();
+    _loadFavStatus();
+  }
+
+  Future<void> _loadFavStatus() async {
+    if (SupabaseService.currentUser == null) return;
+    try {
+      final ids = await SupabaseService.getFavoriteIds();
+      if (mounted) setState(() => _isFav = ids.contains(_listing.id));
+    } catch (_) {}
   }
 
   Future<void> _trackView() async {
@@ -42,11 +52,26 @@ class _ListingScreenState extends State<ListingScreen> {
     setState(() => _refreshing = true);
     try {
       final updated = await SupabaseService.getListingById(_listing.id);
-      if (mounted && updated != null) {
-        setState(() => _listing = updated);
-      }
+      if (mounted && updated != null) setState(() => _listing = updated);
     } catch (_) {}
     if (mounted) setState(() => _refreshing = false);
+  }
+
+  // ── TOGGLE FAV ────────────────────────────────────────────────────────────
+
+  Future<void> _toggleFav() async {
+    if (SupabaseService.currentUser == null) {
+      _snack('Devi essere loggato per salvare i preferiti', error: true);
+      return;
+    }
+    setState(() => _favLoading = true);
+    try {
+      final newState = await SupabaseService.toggleFavorite(_listing.id);
+      if (mounted) setState(() => _isFav = newState);
+    } catch (e) {
+      if (mounted) _snack('Errore: $e', error: true);
+    }
+    if (mounted) setState(() => _favLoading = false);
   }
 
   bool get _isOwner => SupabaseService.currentUser?.id == _listing.userId;
@@ -59,8 +84,7 @@ class _ListingScreenState extends State<ListingScreen> {
       _snack('Devi essere loggato per scrivere al venditore', error: true);
       return;
     }
-    if (user.id == _listing.userId) return; // non scrivere a te stesso
-
+    if (user.id == _listing.userId) return;
     try {
       final conv = await SupabaseService.getOrCreateConversation(
         sellerId: _listing.userId,
@@ -76,7 +100,7 @@ class _ListingScreenState extends State<ListingScreen> {
     }
   }
 
-  // ── STATUS MANAGEMENT ─────────────────────────────────────────────────────
+  // ── STATUS ────────────────────────────────────────────────────────────────
 
   Future<void> _changeStatus(ListingStatus status) async {
     try {
@@ -191,9 +215,7 @@ class _ListingScreenState extends State<ListingScreen> {
             ),
           ),
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
+            bottom: 0, left: 0, right: 0,
             child: _buildBottomBar(context),
           ),
         ],
@@ -208,6 +230,7 @@ class _ListingScreenState extends State<ListingScreen> {
       height: 300,
       child: Stack(
         children: [
+          // Image/emoji background
           _listing.images.isEmpty
               ? Container(
                   color: SwabbitTheme.surface2,
@@ -229,51 +252,71 @@ class _ListingScreenState extends State<ListingScreen> {
                     ),
                   ),
                 ),
-          // Back button
+
+          // Back
           Positioned(
-            top: 16,
-            left: 16,
+            top: 16, left: 16,
             child: GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10)),
                 child: const Icon(Icons.arrow_back_ios_new_rounded,
                     size: 18, color: Colors.white),
               ),
             ),
           ),
-          // Favourite button
+
+          // ❤ Favourite
           Positioned(
-            top: 16,
-            right: 16,
+            top: 16, right: 16,
             child: GestureDetector(
-              onTap: () => setState(() => _isFav = !_isFav),
-              child: Container(
+              onTap: _favLoading ? null : _toggleFav,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
+                  color: _isFav
+                      ? SwabbitTheme.accent3.withOpacity(0.9)
+                      : Colors.black54,
                   borderRadius: BorderRadius.circular(10),
+                  boxShadow: _isFav
+                      ? [
+                          BoxShadow(
+                              color: SwabbitTheme.accent3.withOpacity(0.45),
+                              blurRadius: 14,
+                              offset: const Offset(0, 4))
+                        ]
+                      : [],
                 ),
-                child: Icon(
-                  _isFav
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  size: 18,
-                  color: _isFav ? SwabbitTheme.accent3 : Colors.white,
-                ),
+                child: _favLoading
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        transitionBuilder: (child, anim) =>
+                            ScaleTransition(scale: anim, child: child),
+                        child: Icon(
+                          _isFav
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          key: ValueKey(_isFav),
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ),
-          // Page indicator
+
+          // Dots indicator
           if (_listing.images.length > 1)
             Positioned(
-              bottom: 12,
-              left: 0,
-              right: 0,
+              bottom: 12, left: 0, right: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
@@ -297,23 +340,20 @@ class _ListingScreenState extends State<ListingScreen> {
     );
   }
 
-  // ── CONTENT SECTIONS ──────────────────────────────────────────────────────
+  // ── SECTIONS ──────────────────────────────────────────────────────────────
 
   Widget _buildBadgesAndTitle() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          children: [
-            _Badge(_listing.condition.label, color: _listing.condition.color),
-            if (_listing.hasShipping)
-              _Badge('Spedizione', color: SwabbitTheme.accent2),
-            if (_listing.isNegotiable)
-              _Badge('Trattabile', color: SwabbitTheme.yellow),
-            _Badge(_listing.status.label, color: _listing.status.color),
-          ],
-        ),
+        Wrap(spacing: 8, children: [
+          _Badge(_listing.condition.label, color: _listing.condition.color),
+          if (_listing.hasShipping)
+            _Badge('Spedizione', color: SwabbitTheme.accent2),
+          if (_listing.isNegotiable)
+            _Badge('Trattabile', color: SwabbitTheme.yellow),
+          _Badge(_listing.status.label, color: _listing.status.color),
+        ]),
         const SizedBox(height: 12),
         Text(_listing.title,
             style: const TextStyle(
@@ -361,21 +401,17 @@ class _ListingScreenState extends State<ListingScreen> {
   }
 
   Widget _buildTags() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        if (_listing.location.isNotEmpty)
-          _Tag(icon: Icons.location_on_outlined, label: _listing.location),
-        if (_listing.category != null)
-          _Tag(
-              icon: Icons.category_outlined,
-              label: _listing.category!.toUpperCase()),
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      if (_listing.location.isNotEmpty)
+        _Tag(icon: Icons.location_on_outlined, label: _listing.location),
+      if (_listing.category != null)
         _Tag(
-            icon: Icons.visibility_outlined,
-            label: '${_listing.views} visualizzazioni'),
-      ],
-    );
+            icon: Icons.category_outlined,
+            label: _listing.category!.toUpperCase()),
+      _Tag(
+          icon: Icons.visibility_outlined,
+          label: '${_listing.views} visualizzazioni'),
+    ]);
   }
 
   Widget _buildDescription() {
@@ -422,8 +458,6 @@ class _ListingScreenState extends State<ListingScreen> {
     );
   }
 
-  // ── SELLER CARD ───────────────────────────────────────────────────────────
-
   Widget _buildSellerCard() {
     final sellerName = _listing.sellerName ?? '';
     final sellerUsername = _listing.sellerUsername ?? '';
@@ -432,10 +466,8 @@ class _ListingScreenState extends State<ListingScreen> {
         : sellerUsername.isNotEmpty
             ? sellerUsername
             : 'Utente';
-
     final showAt = sellerUsername.isNotEmpty && name != sellerUsername;
     final username = showAt ? '@$sellerUsername' : null;
-
     final words = name.trim().split(' ');
     final initials =
         words.take(2).map((w) => w.isNotEmpty ? w[0] : '').join().toUpperCase();
@@ -447,168 +479,145 @@ class _ListingScreenState extends State<ListingScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: SwabbitTheme.cardDecoration(),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: SwabbitTheme.accentGrad,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                    color: SwabbitTheme.accent.withOpacity(0.3), width: 1.5),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(13),
-                child: avatarUrl != null
-                    ? Image.network(
-                        avatarUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _avatarInitials(initials),
-                      )
-                    : _avatarInitials(initials),
-              ),
+        child: Row(children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              gradient: SwabbitTheme.accentGrad,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: SwabbitTheme.accent.withOpacity(0.3), width: 1.5),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      style: const TextStyle(
-                          fontFamily: 'Syne',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: SwabbitTheme.text)),
-                  if (username != null)
-                    Text(username,
-                        style: const TextStyle(
-                            fontSize: 12, color: SwabbitTheme.text3)),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      ...List.generate(
-                        5,
-                        (i) => Icon(Icons.star_rounded,
-                            size: 12,
-                            color: i < _listing.sellerRating.round()
-                                ? SwabbitTheme.yellow
-                                : SwabbitTheme.border),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                          '${_listing.sellerRating.toStringAsFixed(1)} · ${_listing.sellerSales} vendite',
-                          style: const TextStyle(
-                              fontSize: 11, color: SwabbitTheme.text3)),
-                    ],
-                  ),
-                ],
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: avatarUrl != null
+                  ? Image.network(avatarUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _avatarInitials(initials))
+                  : _avatarInitials(initials),
             ),
-            if (!isOwnListing)
-              const Icon(Icons.chevron_right_rounded,
-                  color: SwabbitTheme.text3, size: 20),
-          ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name,
+                  style: const TextStyle(
+                      fontFamily: 'Syne',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: SwabbitTheme.text)),
+              if (username != null)
+                Text(username,
+                    style: const TextStyle(
+                        fontSize: 12, color: SwabbitTheme.text3)),
+              const SizedBox(height: 4),
+              Row(children: [
+                ...List.generate(
+                  5,
+                  (i) => Icon(Icons.star_rounded,
+                      size: 12,
+                      color: i < _listing.sellerRating.round()
+                          ? SwabbitTheme.yellow
+                          : SwabbitTheme.border),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                    '${_listing.sellerRating.toStringAsFixed(1)} · ${_listing.sellerSales} vendite',
+                    style: const TextStyle(
+                        fontSize: 11, color: SwabbitTheme.text3)),
+              ]),
+            ]),
+          ),
+          if (!isOwnListing)
+            const Icon(Icons.chevron_right_rounded,
+                color: SwabbitTheme.text3, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  Widget _avatarInitials(String initials) => Center(
+        child: Text(
+          initials.isEmpty ? '?' : initials.toUpperCase(),
+          style: const TextStyle(
+              fontFamily: 'Syne',
+              fontWeight: FontWeight.w800,
+              color: Colors.black,
+              fontSize: 16),
         ),
-      ),
-    );
-  }
-
-  Widget _avatarInitials(String initials) {
-    return Center(
-      child: Text(
-        initials.isEmpty ? '?' : initials.toUpperCase(),
-        style: const TextStyle(
-            fontFamily: 'Syne',
-            fontWeight: FontWeight.w800,
-            color: Colors.black,
-            fontSize: 16),
-      ),
-    );
-  }
-
-  // ── OWNER ACTIONS ─────────────────────────────────────────────────────────
+      );
 
   Widget _buildOwnerActions() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: SwabbitTheme.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Gestisci annuncio',
-              style: TextStyle(
-                  fontFamily: 'Syne',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: SwabbitTheme.text)),
-          const SizedBox(height: 12),
-          Row(
-            children: ListingStatus.values.map((s) {
-              final active = _listing.status == s;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: active ? null : () => _changeStatus(s),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: active
-                          ? s.color.withOpacity(0.15)
-                          : SwabbitTheme.surface2,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: active
-                              ? s.color.withOpacity(0.5)
-                              : SwabbitTheme.border),
-                    ),
-                    child: Text(
-                      s.label,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Gestisci annuncio',
+            style: TextStyle(
+                fontFamily: 'Syne',
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: SwabbitTheme.text)),
+        const SizedBox(height: 12),
+        Row(
+          children: ListingStatus.values.map((s) {
+            final active = _listing.status == s;
+            return Expanded(
+              child: GestureDetector(
+                onTap: active ? null : () => _changeStatus(s),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? s.color.withOpacity(0.15)
+                        : SwabbitTheme.surface2,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: active
+                            ? s.color.withOpacity(0.5)
+                            : SwabbitTheme.border),
+                  ),
+                  child: Text(s.label,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: active ? s.color : SwabbitTheme.text3),
-                    ),
-                  ),
+                          color: active ? s.color : SwabbitTheme.text3)),
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: _deleteListing,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: SwabbitTheme.accent3.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: SwabbitTheme.accent3.withOpacity(0.3)),
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.delete_outline_rounded,
-                      size: 16, color: SwabbitTheme.accent3),
-                  SizedBox(width: 6),
-                  Text('Elimina annuncio',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: SwabbitTheme.accent3)),
-                ],
-              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _deleteListing,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: SwabbitTheme.accent3.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: SwabbitTheme.accent3.withOpacity(0.3)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.delete_outline_rounded,
+                    size: 16, color: SwabbitTheme.accent3),
+                SizedBox(width: 6),
+                Text('Elimina annuncio',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: SwabbitTheme.accent3)),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
-
-  // ── BOTTOM BAR ────────────────────────────────────────────────────────────
 
   Widget _buildBottomBar(BuildContext context) {
     if (_isOwner) return const SizedBox.shrink();
@@ -623,34 +632,32 @@ class _ListingScreenState extends State<ListingScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: _ActionButton(
-                label: 'Contatta venditore',
-                icon: Icons.chat_bubble_outline_rounded,
-                onTap: _contactSeller, // ← COLLEGATO
-                color: SwabbitTheme.accent,
-                textColor: Colors.black,
-              ),
+        child: Row(children: [
+          Expanded(
+            child: _ActionButton(
+              label: 'Contatta venditore',
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: _contactSeller,
+              color: SwabbitTheme.accent,
+              textColor: Colors.black,
             ),
-            const SizedBox(width: 12),
-            _ActionButton(
-              label: 'Offerta',
-              icon: Icons.local_offer_outlined,
-              onTap: () {},
-              color: SwabbitTheme.surface2,
-              textColor: SwabbitTheme.text,
-              borderColor: SwabbitTheme.border,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          _ActionButton(
+            label: 'Offerta',
+            icon: Icons.local_offer_outlined,
+            onTap: () {},
+            color: SwabbitTheme.surface2,
+            textColor: SwabbitTheme.text,
+            borderColor: SwabbitTheme.border,
+          ),
+        ]),
       ),
     );
   }
 }
 
-// ── HELPER WIDGETS ────────────────────────────────────────────────────────────
+// ── HELPERS ───────────────────────────────────────────────────────────────────
 
 class _Badge extends StatelessWidget {
   final String label;
@@ -658,23 +665,21 @@ class _Badge extends StatelessWidget {
   const _Badge(this.label, {required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(label.toUpperCase(),
-          style: TextStyle(
-              fontFamily: 'SpaceMono',
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: color,
-              letterSpacing: 0.5)),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Text(label.toUpperCase(),
+            style: TextStyle(
+                fontFamily: 'SpaceMono',
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.5)),
+      );
 }
 
 class _Tag extends StatelessWidget {
@@ -683,17 +688,14 @@ class _Tag extends StatelessWidget {
   const _Tag({required this.icon, required this.label});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: SwabbitTheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: SwabbitTheme.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: SwabbitTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: SwabbitTheme.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 12, color: SwabbitTheme.text3),
           const SizedBox(width: 4),
           Text(label,
@@ -701,10 +703,8 @@ class _Tag extends StatelessWidget {
                   fontSize: 11,
                   color: SwabbitTheme.text2,
                   fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
+        ]),
+      );
 }
 
 class _ActionButton extends StatelessWidget {
@@ -724,32 +724,30 @@ class _ActionButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(SwabbitTheme.radiusSm),
-          border:
-              borderColor != null ? Border.all(color: borderColor!) : null,
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(SwabbitTheme.radiusSm),
+            border:
+                borderColor != null ? Border.all(color: borderColor!) : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: textColor, size: 18),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Syne',
+                      color: textColor)),
+            ],
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: textColor, size: 18),
-            const SizedBox(width: 8),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Syne',
-                    color: textColor)),
-          ],
-        ),
-      ),
-    );
-  }
+      );
 }

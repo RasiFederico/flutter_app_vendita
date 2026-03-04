@@ -521,4 +521,81 @@ class SupabaseService {
                 r['buyer_id'] == user.id || r['seller_id'] == user.id)
             .toList());
   }
+
+  /// ----PREFERITI ──────────────────────────────────────────────────────────────
+/// Restituisce l'insieme degli ID degli annunci preferiti dell'utente.
+  static Future<Set<String>> getFavoriteIds() async {
+    final user = currentUser;
+    if (user == null) return {};
+    final res = await client
+        .from('favorites')
+        .select('listing_id')
+        .eq('user_id', user.id);
+    return (res as List).map((r) => r['listing_id'] as String).toSet();
+  }
+
+  /// Restituisce tutti gli annunci preferiti dell'utente (con join profiles).
+  static Future<List<Listing>> getFavoriteListings() async {
+    final user = currentUser;
+    if (user == null) return [];
+    final res = await client
+        .from('favorites')
+        .select(
+          'listing_id, listings(*, profiles(nome, cognome, username, avatar_url, rating, sales_count))',
+        )
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false);
+
+    return (res as List)
+        .map((r) => r['listings'] as Map<String, dynamic>?)
+        .whereType<Map<String, dynamic>>()
+        .map(Listing.fromMap)
+        .toList();
+  }
+
+  /// Aggiunge un annuncio ai preferiti. Ritorna true se aggiunto, false se già presente.
+  static Future<bool> addFavorite(String listingId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Devi essere loggato');
+    try {
+      await client.from('favorites').insert({
+        'user_id': user.id,
+        'listing_id': listingId,
+      });
+      return true;
+    } catch (e) {
+      // Codice 23505 = unique_violation (già presente)
+      return false;
+    }
+  }
+
+  /// Rimuove un annuncio dai preferiti.
+  static Future<void> removeFavorite(String listingId) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client
+        .from('favorites')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('listing_id', listingId);
+  }
+
+  /// Toggle: aggiunge se non c'è, rimuove se c'è. Ritorna il nuovo stato (true = preferito).
+  static Future<bool> toggleFavorite(String listingId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Devi essere loggato');
+    final existing = await client
+        .from('favorites')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('listing_id', listingId)
+        .maybeSingle();
+    if (existing != null) {
+      await removeFavorite(listingId);
+      return false;
+    } else {
+      await addFavorite(listingId);
+      return true;
+    }
+  }
 }
