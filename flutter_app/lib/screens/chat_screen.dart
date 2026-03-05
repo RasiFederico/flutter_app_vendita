@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/chat.dart';
 import '../services/supabase_service.dart';
+import '../services/audio_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final Conversation conversation;
@@ -22,6 +23,11 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> _messages = [];
   bool _loading = true;
   bool _sending = false;
+
+  // Teniamo traccia degli ID già visti per distinguere nuovi messaggi
+  // in arrivo dallo stream dal caricamento iniziale.
+  final Set<String> _seenIds = {};
+  bool _initialLoadDone = false;
 
   Conversation get conv => widget.conversation;
   String get currentUserId => SupabaseService.currentUser?.id ?? '';
@@ -45,8 +51,15 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _loading = true);
     try {
       final msgs = await SupabaseService.getMessages(conv.id);
-      if (mounted) setState(() => _messages = msgs);
-      await SupabaseService.markMessagesAsRead(conv.id);
+      if (mounted) {
+        setState(() {
+          _messages = msgs;
+          // Segna tutti i messaggi iniziali come già visti
+          _seenIds.addAll(msgs.map((m) => m.id));
+          _initialLoadDone = true;
+        });
+        await SupabaseService.markMessagesAsRead(conv.id);
+      }
     } catch (e) {
       debugPrint('ChatScreen load error: $e');
     }
@@ -57,6 +70,21 @@ class _ChatScreenState extends State<ChatScreen> {
   void _subscribeRealtime() {
     _sub = SupabaseService.messagesStream(conv.id).listen((msgs) {
       if (!mounted) return;
+
+      if (_initialLoadDone) {
+        // Trova i messaggi realmente nuovi (non ancora visti)
+        final newMsgs =
+            msgs.where((m) => !_seenIds.contains(m.id)).toList();
+
+        for (final msg in newMsgs) {
+          _seenIds.add(msg.id);
+          // Suona solo se il messaggio è di qualcun altro (non mio)
+          if (msg.senderId != currentUserId) {
+            AudioService.playMessageReceive();
+          }
+        }
+      }
+
       setState(() => _messages = msgs);
       SupabaseService.markMessagesAsRead(conv.id);
       _scrollToBottom();
@@ -81,6 +109,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _controller.clear();
     setState(() => _sending = true);
+
+    // Suona subito, prima della risposta di rete: più reattivo
+    AudioService.playMessageSend();
+
     try {
       await SupabaseService.sendMessage(
         conversationId: conv.id,
@@ -106,180 +138,169 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       backgroundColor: SwabbitTheme.bg,
-      appBar: _buildAppBar(name, initials),
-      body: Column(
-        children: [
-          // Listing banner
-          if (conv.listingTitle != null) _buildListingBanner(),
-          // Messages
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                        color: SwabbitTheme.accent, strokeWidth: 2))
-                : _messages.isEmpty
-                    ? _buildEmptyState()
-                    : _buildMessageList(),
-          ),
-          // Input
-          _buildInput(),
-        ],
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(String name, String initials) {
-    return AppBar(
-      backgroundColor: SwabbitTheme.surface,
-      elevation: 0,
-      surfaceTintColor: Colors.transparent,
-      leading: GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: const Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Icon(Icons.arrow_back_ios_new_rounded,
-              color: SwabbitTheme.text, size: 18),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildAppBar(name, initials),
+            if (conv.listingTitle != null) _buildListingBanner(),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: SwabbitTheme.accent))
+                  : _messages.isEmpty
+                      ? _buildEmpty(name)
+                      : _buildMessageList(),
+            ),
+            _buildInput(),
+          ],
         ),
       ),
-      titleSpacing: 0,
-      title: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: SwabbitTheme.accentGrad,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: conv.otherUserAvatarUrl != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
-                    child: Image.network(
-                      conv.otherUserAvatarUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _AvatarInitial(initials),
-                    ),
-                  )
-                : _AvatarInitial(initials),
+    );
+  }
+
+  // ── APP BAR ───────────────────────────────────────────────────────────────
+
+  Widget _buildAppBar(String name, String initials) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: SwabbitTheme.surface,
+        border: Border(bottom: BorderSide(color: SwabbitTheme.border, width: 0.5)),
+      ),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Icon(Icons.arrow_back_ios_new_rounded,
+              size: 18, color: SwabbitTheme.text2),
+        ),
+        const SizedBox(width: 12),
+        // Avatar
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            gradient: SwabbitTheme.accentGrad,
+            borderRadius: BorderRadius.circular(11),
           ),
-          const SizedBox(width: 10),
-          Column(
+          child: conv.otherUserAvatarUrl != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: Image.network(conv.otherUserAvatarUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                            child: Text(initials,
+                                style: const TextStyle(
+                                    fontFamily: 'Syne',
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                    color: Colors.black)),
+                          )),
+                )
+              : Center(
+                  child: Text(initials,
+                      style: const TextStyle(
+                          fontFamily: 'Syne',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: Colors.black)),
+                ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontFamily: 'Syne',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: SwabbitTheme.text,
-                ),
-              ),
-              if (conv.otherUserUsername != null &&
-                  conv.otherUserUsername!.isNotEmpty)
-                Text(
-                  '@${conv.otherUserUsername}',
+              Text(name,
                   style: const TextStyle(
-                      fontSize: 11, color: SwabbitTheme.text3),
-                ),
+                      fontFamily: 'Syne',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: SwabbitTheme.text)),
+              if (conv.otherUserUsername != null)
+                Text('@${conv.otherUserUsername}',
+                    style: const TextStyle(
+                        fontSize: 11, color: SwabbitTheme.text3)),
             ],
           ),
-        ],
-      ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(0.5),
-        child: Container(height: 0.5, color: SwabbitTheme.border),
-      ),
+        ),
+      ]),
     );
   }
+
+  // ── LISTING BANNER ────────────────────────────────────────────────────────
 
   Widget _buildListingBanner() {
-    final hasImg =
-        conv.listingImages != null && conv.listingImages!.isNotEmpty;
+    final img = conv.listingImages?.isNotEmpty == true
+        ? conv.listingImages!.first
+        : null;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: SwabbitTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: SwabbitTheme.border),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: const BoxDecoration(
+        color: SwabbitTheme.surface2,
+        border: Border(bottom: BorderSide(color: SwabbitTheme.border, width: 0.5)),
       ),
-      child: Row(
-        children: [
-          if (hasImg)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: Image.network(
-                conv.listingImages![0],
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: SwabbitTheme.surface3,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.image_outlined,
-                      color: SwabbitTheme.text3, size: 18),
-                ),
-              ),
-            )
-          else
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: SwabbitTheme.surface3,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: const Icon(Icons.inventory_2_outlined,
-                  color: SwabbitTheme.text3, size: 18),
-            ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'ANNUNCIO',
-                  style: TextStyle(
-                      fontFamily: 'SpaceMono',
-                      fontSize: 9,
-                      color: SwabbitTheme.text3,
-                      letterSpacing: 0.5),
-                ),
-                Text(
-                  conv.listingTitle!,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: SwabbitTheme.text,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+      child: Row(children: [
+        if (img != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(img,
+                width: 36, height: 36, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(width: 36, height: 36, color: SwabbitTheme.surface)),
           ),
-          const Icon(Icons.chevron_right_rounded,
-              color: SwabbitTheme.text3, size: 18),
+          const SizedBox(width: 10),
         ],
-      ),
+        Expanded(
+          child: Text(
+            conv.listingTitle ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: SwabbitTheme.text2),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: SwabbitTheme.accent.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: SwabbitTheme.accent.withOpacity(0.2)),
+          ),
+          child: const Text('Annuncio',
+              style: TextStyle(
+                  fontFamily: 'SpaceMono',
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: SwabbitTheme.accent)),
+        ),
+      ]),
     );
   }
 
-  Widget _buildEmptyState() {
+  // ── EMPTY ─────────────────────────────────────────────────────────────────
+
+  Widget _buildEmpty(String name) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.waving_hand_rounded,
-              size: 40, color: SwabbitTheme.accent),
-          const SizedBox(height: 12),
-          const Text(
-            'Inizia la conversazione!',
-            style: TextStyle(
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              gradient: SwabbitTheme.accentGrad,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.chat_bubble_outline_rounded,
+                color: Colors.black, size: 28),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Inizia la conversazione con $name',
+            style: const TextStyle(
               fontFamily: 'Syne',
               fontWeight: FontWeight.w700,
               fontSize: 16,
@@ -295,6 +316,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  // ── MESSAGE LIST ──────────────────────────────────────────────────────────
 
   Widget _buildMessageList() {
     return ListView.builder(
@@ -345,6 +368,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ── INPUT ─────────────────────────────────────────────────────────────────
+
   Widget _buildInput() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -376,8 +401,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     hintText: 'Scrivi un messaggio...',
                     hintStyle: TextStyle(
                         color: SwabbitTheme.text3, fontSize: 14),
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     border: InputBorder.none,
                   ),
                   onSubmitted: (_) => _send(),
@@ -422,7 +447,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ─── BUBBLE ──────────────────────────────────────────────────────────────────
+// ── BUBBLE ────────────────────────────────────────────────────────────────────
 
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
@@ -435,61 +460,43 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.72),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
         margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           gradient: isMe ? SwabbitTheme.accentGrad : null,
           color: isMe ? null : SwabbitTheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
-            bottomLeft: isMe
-                ? const Radius.circular(16)
-                : const Radius.circular(4),
-            bottomRight: isMe
-                ? const Radius.circular(4)
-                : const Radius.circular(16),
+            bottomLeft:
+                isMe ? const Radius.circular(16) : const Radius.circular(4),
+            bottomRight:
+                isMe ? const Radius.circular(4) : const Radius.circular(16),
           ),
           border: isMe ? null : Border.all(color: SwabbitTheme.border),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Text(
               message.content,
               style: TextStyle(
-                fontSize: 14,
-                color: isMe ? Colors.black : SwabbitTheme.text,
-                height: 1.4,
-              ),
+                  fontSize: 14,
+                  color: isMe ? Colors.black : SwabbitTheme.text,
+                  height: 1.4),
             ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatTime(message.createdAt),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isMe
-                        ? Colors.black.withOpacity(0.5)
-                        : SwabbitTheme.text3,
-                  ),
-                ),
-                if (isMe) ...[
-                  const SizedBox(width: 3),
-                  Icon(
-                    message.read
-                        ? Icons.done_all_rounded
-                        : Icons.done_rounded,
-                    size: 12,
-                    color: Colors.black.withOpacity(0.5),
-                  ),
-                ],
-              ],
+            const SizedBox(height: 4),
+            Text(
+              _formatTime(message.createdAt),
+              style: TextStyle(
+                  fontSize: 10,
+                  color: isMe
+                      ? Colors.black.withOpacity(0.5)
+                      : SwabbitTheme.text3),
             ),
           ],
         ),
@@ -501,25 +508,5 @@ class _MessageBubble extends StatelessWidget {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
-  }
-}
-
-class _AvatarInitial extends StatelessWidget {
-  final String initial;
-  const _AvatarInitial(this.initial);
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        initial,
-        style: const TextStyle(
-          fontFamily: 'Syne',
-          fontWeight: FontWeight.w800,
-          fontSize: 15,
-          color: Colors.black,
-        ),
-      ),
-    );
   }
 }

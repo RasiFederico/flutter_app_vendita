@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/listing.dart';
 import '../services/supabase_service.dart';
+import '../services/audio_service.dart';
 import 'user_profile_screen.dart';
 import 'chat_screen.dart';
 import '../models/chat.dart';
@@ -67,7 +68,15 @@ class _ListingScreenState extends State<ListingScreen> {
     setState(() => _favLoading = true);
     try {
       final newState = await SupabaseService.toggleFavorite(_listing.id);
-      if (mounted) setState(() => _isFav = newState);
+      if (mounted) {
+        setState(() => _isFav = newState);
+        // ── Suono ──
+        if (newState) {
+          AudioService.playFavoriteAdd();
+        } else {
+          AudioService.playFavoriteRemove();
+        }
+      }
     } catch (e) {
       if (mounted) _snack('Errore: $e', error: true);
     }
@@ -85,89 +94,91 @@ class _ListingScreenState extends State<ListingScreen> {
       return;
     }
     if (user.id == _listing.userId) return;
+
     try {
-      final conv = await SupabaseService.getOrCreateConversation(
-        sellerId: _listing.userId,
+      // Cerca o crea conversazione
+      final existing = await SupabaseService.client
+          .from('conversations')
+          .select()
+          .or('and(buyer_id.eq.${user.id},seller_id.eq.${_listing.userId}),and(buyer_id.eq.${_listing.userId},seller_id.eq.${user.id})')
+          .eq('listing_id', _listing.id)
+          .maybeSingle();
+
+      Map<String, dynamic> convRow;
+      if (existing != null) {
+        convRow = existing as Map<String, dynamic>;
+      } else {
+        final created = await SupabaseService.client
+            .from('conversations')
+            .insert({
+              'buyer_id': user.id,
+              'seller_id': _listing.userId,
+              'listing_id': _listing.id,
+            })
+            .select()
+            .single();
+        convRow = created as Map<String, dynamic>;
+      }
+
+      // Carica profilo venditore per la conv
+      final sellerProfile = await SupabaseService.client
+          .from('profiles')
+          .select('nome, cognome, username, avatar_url')
+          .eq('id', _listing.userId)
+          .maybeSingle();
+
+      final nome = (sellerProfile?['nome'] as String? ?? '').trim();
+      final cognome = (sellerProfile?['cognome'] as String? ?? '').trim();
+      final fullName = '$nome $cognome'.trim();
+      final username = sellerProfile?['username'] as String? ?? '';
+      final displayName = fullName.isNotEmpty
+          ? fullName
+          : username.isNotEmpty
+              ? username
+              : 'Venditore';
+
+      final conv = Conversation(
+        id: convRow['id'] as String,
         listingId: _listing.id,
+        buyerId: convRow['buyer_id'] as String,
+        sellerId: convRow['seller_id'] as String,
+        lastMessage: convRow['last_message'] as String?,
+        lastMessageAt: convRow['last_message_at'] != null
+            ? DateTime.parse(convRow['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(convRow['created_at'] as String),
+        otherUserName: displayName,
+        otherUserUsername: username.isNotEmpty ? username : null,
+        otherUserAvatarUrl: sellerProfile?['avatar_url'] as String?,
+        listingTitle: _listing.title,
+        listingImages: _listing.images.isNotEmpty ? [_listing.images.first] : null,
       );
+
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => ChatScreen(conversation: conv)),
       );
     } catch (e) {
-      if (mounted) _snack('Errore: $e', error: true);
+      if (mounted) _snack('Errore nell\'apertura della chat: $e', error: true);
     }
   }
-
-  // ── STATUS ────────────────────────────────────────────────────────────────
 
   Future<void> _changeStatus(ListingStatus status) async {
     try {
       await SupabaseService.updateListingStatus(_listing.id, status);
-      setState(() => _listing = _listing.copyWith(status: status));
-      _snack('Stato aggiornato: ${status.label}');
+      if (mounted) setState(() => _listing = _listing.copyWith(status: status));
+      _snack('Stato aggiornato');
     } catch (e) {
-      _snack('Errore: $e', error: true);
+      if (mounted) _snack('Errore: $e', error: true);
     }
-  }
-
-  Future<void> _deleteListing() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: SwabbitTheme.surface,
-        title: const Text('Elimina annuncio',
-            style: TextStyle(
-                fontFamily: 'Syne',
-                color: SwabbitTheme.text,
-                fontWeight: FontWeight.w700)),
-        content: const Text(
-            'Sei sicuro? L\'operazione è irreversibile e le immagini saranno eliminate.',
-            style: TextStyle(color: SwabbitTheme.text2)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annulla',
-                style: TextStyle(color: SwabbitTheme.text2)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Elimina',
-                style: TextStyle(color: SwabbitTheme.accent3)),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      try {
-        await SupabaseService.deleteListing(_listing.id);
-        if (!mounted) return;
-        Navigator.pop(context, true);
-      } catch (e) {
-        _snack('Errore durante l\'eliminazione: $e', error: true);
-      }
-    }
-  }
-
-  void _openSellerProfile() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserProfileScreen(
-          userId: _listing.userId,
-          initialName: _listing.sellerName,
-          initialUsername: _listing.sellerUsername,
-          initialAvatarUrl: _listing.sellerAvatarUrl,
-        ),
-      ),
-    );
   }
 
   void _snack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: error ? SwabbitTheme.accent3 : SwabbitTheme.green,
+      backgroundColor:
+          error ? SwabbitTheme.accent3 : SwabbitTheme.green,
     ));
   }
 
@@ -327,8 +338,8 @@ class _ListingScreenState extends State<ListingScreen> {
                     height: 6,
                     decoration: BoxDecoration(
                       color: _imageIndex == i
-                          ? SwabbitTheme.accent
-                          : Colors.white.withOpacity(0.5),
+                          ? Colors.white
+                          : Colors.white38,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -340,55 +351,78 @@ class _ListingScreenState extends State<ListingScreen> {
     );
   }
 
-  // ── SECTIONS ──────────────────────────────────────────────────────────────
+  // ── BADGES & TITLE ────────────────────────────────────────────────────────
 
   Widget _buildBadgesAndTitle() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(spacing: 8, children: [
-          _Badge(_listing.condition.label, color: _listing.condition.color),
+        Wrap(spacing: 8, runSpacing: 6, children: [
+          _ConditionBadge(_listing.condition),
           if (_listing.hasShipping)
-            _Badge('Spedizione', color: SwabbitTheme.accent2),
+            _Badge(
+                label: 'Spedizione',
+                icon: Icons.local_shipping_outlined,
+                color: SwabbitTheme.accent2),
           if (_listing.isNegotiable)
-            _Badge('Trattabile', color: SwabbitTheme.yellow),
-          _Badge(_listing.status.label, color: _listing.status.color),
+            _Badge(
+                label: 'Trattabile',
+                icon: Icons.handshake_outlined,
+                color: SwabbitTheme.yellow),
         ]),
         const SizedBox(height: 12),
-        Text(_listing.title,
-            style: const TextStyle(
-                fontFamily: 'Syne',
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
-                color: SwabbitTheme.text,
-                height: 1.2)),
+        Text(
+          _listing.title,
+          style: const TextStyle(
+              fontFamily: 'Syne',
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
+              color: SwabbitTheme.text,
+              height: 1.2),
+        ),
       ],
     );
   }
+
+  // ── PRICE ROW ─────────────────────────────────────────────────────────────
 
   Widget _buildPriceRow() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('€ ${_listing.price.toStringAsFixed(0)}',
-            style: SwabbitTheme.monoStyle
-                .copyWith(fontSize: 28, color: SwabbitTheme.accent)),
-        if (_listing.originalPrice != null) ...[
+        Text(
+          '€ ${_listing.price.toStringAsFixed(_listing.price.truncateToDouble() == _listing.price ? 0 : 2)}',
+          style: const TextStyle(
+              fontFamily: 'SpaceMono',
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: SwabbitTheme.accent),
+        ),
+        if (_listing.originalPrice != null &&
+            _listing.originalPrice! > _listing.price) ...[
           const SizedBox(width: 10),
-          Text('€ ${_listing.originalPrice!.toStringAsFixed(0)}',
-              style: SwabbitTheme.monoStyle.copyWith(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text(
+              '€ ${_listing.originalPrice!.toStringAsFixed(0)}',
+              style: const TextStyle(
                   fontSize: 16,
                   color: SwabbitTheme.text3,
-                  decoration: TextDecoration.lineThrough)),
-          const SizedBox(width: 6),
+                  decoration: TextDecoration.lineThrough),
+            ),
+          ),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
               color: SwabbitTheme.green.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(
+                  color: SwabbitTheme.green.withOpacity(0.3)),
             ),
             child: Text(
-              '-${((_listing.originalPrice! - _listing.price) / _listing.originalPrice! * 100).round()}%',
+              '−${((1 - _listing.price / _listing.originalPrice!) * 100).round()}%',
               style: const TextStyle(
                   color: SwabbitTheme.green,
                   fontSize: 11,
@@ -399,6 +433,8 @@ class _ListingScreenState extends State<ListingScreen> {
       ],
     );
   }
+
+  // ── TAGS ──────────────────────────────────────────────────────────────────
 
   Widget _buildTags() {
     return Wrap(spacing: 8, runSpacing: 8, children: [
@@ -413,6 +449,8 @@ class _ListingScreenState extends State<ListingScreen> {
           label: '${_listing.views} visualizzazioni'),
     ]);
   }
+
+  // ── DESCRIPTION ───────────────────────────────────────────────────────────
 
   Widget _buildDescription() {
     if (_listing.description.isEmpty) return const SizedBox.shrink();
@@ -458,6 +496,8 @@ class _ListingScreenState extends State<ListingScreen> {
     );
   }
 
+  // ── SELLER CARD ───────────────────────────────────────────────────────────
+
   Widget _buildSellerCard() {
     final sellerName = _listing.sellerName ?? '';
     final sellerUsername = _listing.sellerUsername ?? '';
@@ -470,63 +510,70 @@ class _ListingScreenState extends State<ListingScreen> {
     final username = showAt ? '@$sellerUsername' : null;
     final words = name.trim().split(' ');
     final initials =
-        words.take(2).map((w) => w.isNotEmpty ? w[0] : '').join().toUpperCase();
-    final avatarUrl = _listing.sellerAvatarUrl;
+        words.take(2).map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join();
     final isOwnListing = _isOwner;
 
     return GestureDetector(
-      onTap: isOwnListing ? null : _openSellerProfile,
+      onTap: isOwnListing
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      UserProfileScreen(userId: _listing.userId),
+                ),
+              ),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: SwabbitTheme.cardDecoration(),
         child: Row(children: [
           Container(
-            width: 48, height: 48,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
               gradient: SwabbitTheme.accentGrad,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: SwabbitTheme.accent.withOpacity(0.3), width: 1.5),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(13),
-              child: avatarUrl != null
-                  ? Image.network(avatarUrl,
+            child: _listing.sellerAvatarUrl != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      _listing.sellerAvatarUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _avatarInitials(initials))
-                  : _avatarInitials(initials),
-            ),
+                      errorBuilder: (_, __, ___) => _avatarInitials(initials),
+                    ),
+                  )
+                : _avatarInitials(initials),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name,
-                  style: const TextStyle(
-                      fontFamily: 'Syne',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: SwabbitTheme.text)),
-              if (username != null)
-                Text(username,
-                    style: const TextStyle(
-                        fontSize: 12, color: SwabbitTheme.text3)),
-              const SizedBox(height: 4),
-              Row(children: [
-                ...List.generate(
-                  5,
-                  (i) => Icon(Icons.star_rounded,
-                      size: 12,
-                      color: i < _listing.sellerRating.round()
-                          ? SwabbitTheme.yellow
-                          : SwabbitTheme.border),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                    '${_listing.sellerRating.toStringAsFixed(1)} · ${_listing.sellerSales} vendite',
-                    style: const TextStyle(
-                        fontSize: 11, color: SwabbitTheme.text3)),
-              ]),
-            ]),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(
+                          fontFamily: 'Syne',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: SwabbitTheme.text)),
+                  if (username != null)
+                    Text(username,
+                        style: const TextStyle(
+                            fontSize: 12, color: SwabbitTheme.text3)),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Icon(Icons.star_rounded,
+                        size: 13,
+                        color: _listing.sellerRating >= 4.5
+                            ? SwabbitTheme.yellow
+                            : SwabbitTheme.border),
+                    const SizedBox(width: 4),
+                    Text(
+                        '${_listing.sellerRating.toStringAsFixed(1)} · ${_listing.sellerSales} vendite',
+                        style: const TextStyle(
+                            fontSize: 11, color: SwabbitTheme.text3)),
+                  ]),
+                ]),
           ),
           if (!isOwnListing)
             const Icon(Icons.chevron_right_rounded,
@@ -546,6 +593,8 @@ class _ListingScreenState extends State<ListingScreen> {
               fontSize: 16),
         ),
       );
+
+  // ── OWNER ACTIONS ─────────────────────────────────────────────────────────
 
   Widget _buildOwnerActions() {
     return Container(
@@ -589,97 +638,124 @@ class _ListingScreenState extends State<ListingScreen> {
             );
           }).toList(),
         ),
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: _deleteListing,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: SwabbitTheme.accent3.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: SwabbitTheme.accent3.withOpacity(0.3)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.delete_outline_rounded,
-                    size: 16, color: SwabbitTheme.accent3),
-                SizedBox(width: 6),
-                Text('Elimina annuncio',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: SwabbitTheme.accent3)),
-              ],
-            ),
-          ),
-        ),
       ]),
     );
   }
 
+  // ── BOTTOM BAR ────────────────────────────────────────────────────────────
+
   Widget _buildBottomBar(BuildContext context) {
-    if (_isOwner) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [SwabbitTheme.bg.withOpacity(0), SwabbitTheme.bg],
-        ),
+        color: SwabbitTheme.bg,
+        border: const Border(
+            top: BorderSide(color: SwabbitTheme.border, width: 0.5)),
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(children: [
-          Expanded(
-            child: _ActionButton(
-              label: 'Contatta venditore',
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: _contactSeller,
-              color: SwabbitTheme.accent,
-              textColor: Colors.black,
-            ),
-          ),
-          const SizedBox(width: 12),
-          _ActionButton(
-            label: 'Offerta',
-            icon: Icons.local_offer_outlined,
-            onTap: () {},
-            color: SwabbitTheme.surface2,
-            textColor: SwabbitTheme.text,
-            borderColor: SwabbitTheme.border,
-          ),
-        ]),
+      child: _isOwner
+          ? Row(children: [
+              Expanded(
+                child: Text(
+                  'Questo è il tuo annuncio',
+                  style: const TextStyle(
+                      fontSize: 13, color: SwabbitTheme.text3),
+                ),
+              ),
+            ])
+          : Row(children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _contactSeller,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      gradient: SwabbitTheme.accentGrad,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SwabbitTheme.accent.withOpacity(0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        )
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline_rounded,
+                            size: 18, color: Colors.black),
+                        SizedBox(width: 8),
+                        Text('Contatta venditore',
+                            style: TextStyle(
+                                fontFamily: 'Syne',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: Colors.black)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+    );
+  }
+}
+
+// ── SMALL WIDGETS ─────────────────────────────────────────────────────────────
+
+class _ConditionBadge extends StatelessWidget {
+  final ListingCondition condition;
+  const _ConditionBadge(this.condition);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: condition.color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: condition.color.withOpacity(0.4)),
+      ),
+      child: Text(
+        condition.label,
+        style: TextStyle(
+            fontFamily: 'SpaceMono',
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: condition.color),
       ),
     );
   }
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-
 class _Badge extends StatelessWidget {
   final String label;
+  final IconData icon;
   final Color color;
-  const _Badge(this.label, {required this.color});
+  const _Badge(
+      {required this.label, required this.icon, required this.color});
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Text(label.toUpperCase(),
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label,
             style: TextStyle(
                 fontFamily: 'SpaceMono',
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: color,
-                letterSpacing: 0.5)),
-      );
+                color: color)),
+      ]),
+    );
+  }
 }
 
 class _Tag extends StatelessWidget {
@@ -688,66 +764,21 @@ class _Tag extends StatelessWidget {
   const _Tag({required this.icon, required this.label});
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: SwabbitTheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: SwabbitTheme.border),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 12, color: SwabbitTheme.text3),
-          const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: SwabbitTheme.text2,
-                  fontWeight: FontWeight.w500)),
-        ]),
-      );
-}
-
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color color;
-  final Color textColor;
-  final Color? borderColor;
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    required this.color,
-    required this.textColor,
-    this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(SwabbitTheme.radiusSm),
-            border:
-                borderColor != null ? Border.all(color: borderColor!) : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: textColor, size: 18),
-              const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Syne',
-                      color: textColor)),
-            ],
-          ),
-        ),
-      );
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: SwabbitTheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: SwabbitTheme.border),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: SwabbitTheme.text3),
+        const SizedBox(width: 5),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 12, color: SwabbitTheme.text2)),
+      ]),
+    );
+  }
 }

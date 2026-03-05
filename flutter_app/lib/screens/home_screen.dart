@@ -5,12 +5,11 @@ import '../main.dart';
 import '../models/models.dart';
 import '../models/listing.dart';
 import '../services/supabase_service.dart';
-import 'product_screen.dart';
 import 'listing_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   // Notifier passato da MainScaffold: si incrementa ogni volta che si tappa
-  // sul tab Home → la screen ricarica i preferiti automaticamente.
+  // sul tab Home → la screen ricarica i dati automaticamente.
   final ValueNotifier<int>? refreshNotifier;
 
   const HomeScreen({super.key, this.refreshNotifier});
@@ -21,16 +20,19 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedCategoryIndex = -1;
-  final Set<String> _favorites = {};
 
-  // Preferiti da Supabase (annunci reali)
+  // Preferiti da Supabase
   List<Listing> _favoriteListings = [];
   bool _favLoading = true;
+
+  // Annunci reali da Supabase
+  List<Listing> _homeListings = [];
+  bool _listingsLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadFavorites();
+    _loadAll();
     widget.refreshNotifier?.addListener(_onExternalRefresh);
   }
 
@@ -40,8 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // Chiamato ogni volta che si tappa sul tab Home
-  void _onExternalRefresh() => _loadFavorites();
+  void _onExternalRefresh() => _loadAll();
+
+  Future<void> _loadAll() async {
+    await Future.wait([_loadFavorites(), _loadListings()]);
+  }
 
   Future<void> _loadFavorites() async {
     if (SupabaseService.currentUser == null) {
@@ -56,30 +61,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _favLoading = false);
   }
 
-  // Toggle locale per i prodotti mock (non Supabase)
-  void _toggleFavorite(String id) => setState(() {
-        _favorites.contains(id)
-            ? _favorites.remove(id)
-            : _favorites.add(id);
-      });
+  Future<void> _loadListings() async {
+    if (mounted) setState(() => _listingsLoading = true);
+    try {
+      // Recupera un pool di annunci recenti ampio per poi ordinarli lato client
+      final listings = await SupabaseService.getRecentListings(limit: 60);
+      final sorted = _applyScoringSort(listings);
+      if (mounted) setState(() => _homeListings = sorted);
+    } catch (_) {}
+    if (mounted) setState(() => _listingsLoading = false);
+  }
 
-  void _openProduct(BuildContext context, Product product) {
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => ProductScreen(product: product),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(
-          opacity: anim,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.05),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-            child: child,
-          ),
-        ),
-      ),
-    );
+  /// Mini-algoritmo di ordinamento:
+  ///   score = (views + BASE) / (ageInDays + DECAY)
+  ///
+  /// • BASE  = 10  → boost per i nuovi annunci con 0 visualizzazioni
+  /// • DECAY = 14  → "età di dimezzamento" in giorni
+  ///
+  /// Effetto pratico:
+  ///   - Annunci con molte views scalano in cima
+  ///   - Annunci recenti con poche views possono battere annunci vecchi
+  ///     anche popolari ("se troppo vecchio")
+  ///   - Un annuncio con 0 views da oggi batte un annuncio da 30+ giorni
+  ///     con poche views
+  List<Listing> _applyScoringSort(List<Listing> listings) {
+    const double base = 10.0;
+    const double decay = 14.0;
+
+    double _score(Listing l) {
+      final ageInDays =
+          DateTime.now().difference(l.createdAt).inHours / 24.0;
+      return (l.views + base) / (ageInDays + decay);
+    }
+
+    final sorted = List<Listing>.from(listings);
+    sorted.sort((a, b) => _score(b).compareTo(_score(a)));
+    return sorted;
   }
 
   void _openListing(BuildContext context, Listing listing) {
@@ -98,7 +115,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ).then((_) => _loadFavorites()); // ricarica al ritorno dall'annuncio
+    ).then((_) => _loadAll()); // ricarica al ritorno dall'annuncio
+  }
+
+  // ── FILTERED LISTINGS (by category) ───────────────────────────────────────
+
+  List<Listing> get _filteredListings {
+    if (_selectedCategoryIndex < 0) return _homeListings;
+    final catId = AppData.categories[_selectedCategoryIndex].id;
+    return _homeListings
+        .where((l) => l.category?.toLowerCase() == catId.toLowerCase())
+        .toList();
   }
 
   @override
@@ -107,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: SwabbitTheme.bg,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadFavorites,
+          onRefresh: _loadAll,
           color: SwabbitTheme.accent,
           backgroundColor: SwabbitTheme.surface,
           child: CustomScrollView(
@@ -115,7 +142,6 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _buildHeader()),
               SliverToBoxAdapter(child: _buildSearchBar(context)),
               SliverToBoxAdapter(child: _buildCategories()),
-              SliverToBoxAdapter(child: _buildFeaturedBanner(context)),
 
               // ── PREFERITI (solo se loggato) ────────────────────────
               if (SupabaseService.currentUser != null) ...[
@@ -144,31 +170,48 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 8)),
               ],
 
-              // ── ANNUNCI RECENTI ────────────────────────────────────
+              // ── ANNUNCI ────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: _buildSectionHeader(
-                  title: 'Annunci recenti',
+                  title: 'In evidenza',
                   icon: Icons.bolt_rounded,
                   iconColor: SwabbitTheme.accent,
+                  count: _filteredListings.isNotEmpty
+                      ? _filteredListings.length
+                      : null,
                 ),
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.72,
+
+              if (_listingsLoading)
+                const SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 200,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                          color: SwabbitTheme.accent, strokeWidth: 2),
+                    ),
                   ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) =>
-                        _buildProductCard(context, AppData.products[index]),
-                    childCount: AppData.products.length,
+                )
+              else if (_filteredListings.isEmpty)
+                SliverToBoxAdapter(child: _buildListingsEmpty())
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.72,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildListingCard(
+                          context, _filteredListings[index]),
+                      childCount: _filteredListings.length,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -223,19 +266,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: SwabbitTheme.accent3,
                     shape: BoxShape.circle,
-                    border: Border.all(
-                        color: SwabbitTheme.surface2, width: 1.5),
+                    border:
+                        Border.all(color: SwabbitTheme.surface2, width: 1.5),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(width: 10),
-          _IconButton(icon: Icons.tune_rounded, onTap: () {}),
         ],
       ),
     );
   }
+
+  // ── SEARCH BAR ────────────────────────────────────────────────────────────
 
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
@@ -243,10 +286,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: GestureDetector(
         onTap: () {},
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           decoration: BoxDecoration(
             color: SwabbitTheme.surface,
-            borderRadius: BorderRadius.circular(SwabbitTheme.radiusSm),
+            borderRadius:
+                BorderRadius.circular(SwabbitTheme.radiusSm),
             border: Border.all(color: SwabbitTheme.border),
           ),
           child: const Row(
@@ -255,14 +300,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   size: 18, color: SwabbitTheme.text3),
               SizedBox(width: 10),
               Text('Cerca GPU, RAM, CPU...',
-                  style: TextStyle(
-                      fontSize: 14, color: SwabbitTheme.text3)),
+                  style:
+                      TextStyle(fontSize: 14, color: SwabbitTheme.text3)),
             ],
           ),
         ),
       ),
     );
   }
+
+  // ── CATEGORIES ────────────────────────────────────────────────────────────
 
   Widget _buildCategories() {
     return Column(
@@ -334,105 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 20),
       ],
-    );
-  }
-
-  Widget _buildFeaturedBanner(BuildContext context) {
-    final featured = AppData.products.firstWhere((p) => p.isFeatured);
-    return GestureDetector(
-      onTap: () => _openProduct(context, featured),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1a0933),
-              Color(0xFF0d1a33),
-              Color(0xFF001a1a)
-            ],
-          ),
-          borderRadius: BorderRadius.circular(SwabbitTheme.radius),
-          border:
-              Border.all(color: SwabbitTheme.accent2.withOpacity(0.3)),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -40,
-              right: -20,
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      SwabbitTheme.accent2.withOpacity(0.2),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: SwabbitTheme.green.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color: SwabbitTheme.green.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    featured.originalPrice != null
-                        ? '−${((1 - featured.price / featured.originalPrice!) * 100).round()}%'
-                        : 'TOP',
-                    style: const TextStyle(
-                        fontFamily: 'SpaceMono',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: SwabbitTheme.green),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(featured.title,
-                    style: SwabbitTheme.displayStyle
-                        .copyWith(fontSize: 18, height: 1.2)),
-                const SizedBox(height: 6),
-                Text('€ ${featured.price.toStringAsFixed(0)}',
-                    style: SwabbitTheme.monoStyle.copyWith(
-                        fontSize: 22, color: SwabbitTheme.accent)),
-                const SizedBox(height: 14),
-                Row(children: [
-                  Text(featured.emoji,
-                      style: const TextStyle(fontSize: 36)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: SwabbitTheme.accent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text('Vedi',
-                        style: TextStyle(
-                            fontFamily: 'Syne',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: Colors.black)),
-                  ),
-                ]),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -542,8 +490,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: SwabbitTheme.text)),
                 SizedBox(height: 3),
                 Text('Tocca ❤ su un annuncio per salvarlo qui.',
-                    style: TextStyle(
-                        fontSize: 12, color: SwabbitTheme.text2)),
+                    style: TextStyle(fontSize: 12, color: SwabbitTheme.text2)),
               ],
             ),
           ),
@@ -552,111 +499,221 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── PRODUCT CARD (mock) ───────────────────────────────────────────────────
+  // ── LISTINGS EMPTY ────────────────────────────────────────────────────────
 
-  Widget _buildProductCard(BuildContext context, Product product) {
-    final isFav = _favorites.contains(product.id);
+  Widget _buildListingsEmpty() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: SwabbitTheme.surface,
+        borderRadius: BorderRadius.circular(SwabbitTheme.radius),
+        border: Border.all(color: SwabbitTheme.border),
+      ),
+      child: Column(
+        children: [
+          const Text('📦', style: TextStyle(fontSize: 40)),
+          const SizedBox(height: 12),
+          Text(
+            _selectedCategoryIndex >= 0
+                ? 'Nessun annuncio in questa categoria'
+                : 'Nessun annuncio disponibile',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontFamily: 'Syne',
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                color: SwabbitTheme.text),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Sii il primo a pubblicare un annuncio!',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: SwabbitTheme.text2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── LISTING CARD (reale, Supabase) ────────────────────────────────────────
+
+  Widget _buildListingCard(BuildContext context, Listing listing) {
     return GestureDetector(
-      onTap: () => _openProduct(context, product),
+      onTap: () => _openListing(context, listing),
       child: Container(
         decoration: SwabbitTheme.cardDecoration(),
         clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: 130,
+            // ── Immagine / placeholder ──
+            Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(
-                    decoration:
-                        BoxDecoration(gradient: product.thumbGradient)),
-                  Center(
-                    child: Text(product.emoji,
-                        style: const TextStyle(fontSize: 52)),
-                  ),
+                  listing.images.isNotEmpty
+                      ? Image.network(
+                          listing.images.first,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _placeholderThumb(listing),
+                        )
+                      : _placeholderThumb(listing),
+                  // Badge condizione
                   Positioned(
-                    top: 8,
-                    right: 8,
-                    child: GestureDetector(
-                      onTap: () => _toggleFavorite(product.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            isFav
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            size: 14,
-                            color: isFav
-                                ? SwabbitTheme.accent3
-                                : Colors.white,
-                          ),
-                        ),
+                    bottom: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: listing.condition.color.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        listing.condition.label,
+                        style: const TextStyle(
+                            fontFamily: 'SpaceMono',
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black),
                       ),
                     ),
                   ),
+                  // Sconto se presente
+                  if (listing.originalPrice != null &&
+                      listing.originalPrice! > listing.price)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: SwabbitTheme.green,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '−${((1 - listing.price / listing.originalPrice!) * 100).round()}%',
+                          style: const TextStyle(
+                              fontFamily: 'SpaceMono',
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
+            // ── Info ──
             Padding(
               padding: const EdgeInsets.all(10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(product.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontFamily: 'Syne',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: SwabbitTheme.text)),
+                  Text(
+                    listing.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontFamily: 'Syne',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: SwabbitTheme.text),
+                  ),
                   const SizedBox(height: 4),
-                  Text('€ ${product.price.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                          fontFamily: 'SpaceMono',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: SwabbitTheme.accent)),
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color:
-                            product.conditionColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(product.conditionLabel,
-                          style: TextStyle(
-                              fontFamily: 'SpaceMono',
-                              fontSize: 8,
-                              fontWeight: FontWeight.w700,
-                              color: product.conditionColor)),
-                    ),
-                    const Spacer(),
-                    const Icon(Icons.location_on_outlined,
-                        size: 10, color: SwabbitTheme.text3),
-                    const SizedBox(width: 2),
-                    Text(product.location,
+                  Row(
+                    children: [
+                      Text(
+                        '€ ${listing.price.toStringAsFixed(listing.price.truncateToDouble() == listing.price ? 0 : 2)}',
                         style: const TextStyle(
-                            fontSize: 10,
-                            color: SwabbitTheme.text3)),
-                  ]),
+                            fontFamily: 'SpaceMono',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: SwabbitTheme.accent),
+                      ),
+                      if (listing.originalPrice != null &&
+                          listing.originalPrice! > listing.price) ...[
+                        const SizedBox(width: 5),
+                        Text(
+                          '€ ${listing.originalPrice!.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              fontSize: 10,
+                              color: SwabbitTheme.text3,
+                              decoration: TextDecoration.lineThrough),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.visibility_outlined,
+                          size: 11, color: SwabbitTheme.text3),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${listing.views}',
+                        style: const TextStyle(
+                            fontSize: 10, color: SwabbitTheme.text3),
+                      ),
+                      const Spacer(),
+                      if (listing.location.isNotEmpty)
+                        Flexible(
+                          child: Text(
+                            listing.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: SwabbitTheme.text3),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _placeholderThumb(Listing listing) {
+    return Container(
+      color: SwabbitTheme.surface2,
+      child: Center(
+        child: Text(
+          listing.categoryEmoji,
+          style: const TextStyle(fontSize: 40),
+        ),
+      ),
+    );
+  }
+}
+
+// ── ICON BUTTON ───────────────────────────────────────────────────────────────
+
+class _IconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _IconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: SwabbitTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: SwabbitTheme.border),
+        ),
+        child: Icon(icon, size: 20, color: SwabbitTheme.text2),
       ),
     );
   }
@@ -725,15 +782,14 @@ class _FavoriteCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color:
-                            listing.condition.color.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(5),
+                        color: listing.condition.color.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        listing.condition.label.toUpperCase(),
+                        listing.condition.label,
                         style: const TextStyle(
                             fontFamily: 'SpaceMono',
-                            fontSize: 7,
+                            fontSize: 9,
                             fontWeight: FontWeight.w700,
                             color: Colors.black),
                       ),
@@ -743,26 +799,39 @@ class _FavoriteCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(9),
+              padding: const EdgeInsets.all(10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(listing.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontFamily: 'Syne',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                          color: SwabbitTheme.text,
-                          height: 1.3)),
-                  const SizedBox(height: 5),
-                  Text('€ ${listing.price.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                          fontFamily: 'SpaceMono',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: SwabbitTheme.accent)),
+                  Text(
+                    listing.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontFamily: 'Syne',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: SwabbitTheme.text),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '€ ${listing.price.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        fontFamily: 'SpaceMono',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: SwabbitTheme.accent),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(children: [
+                    const Icon(Icons.visibility_outlined,
+                        size: 11, color: SwabbitTheme.text3),
+                    const SizedBox(width: 3),
+                    Text('${listing.views}',
+                        style: const TextStyle(
+                            fontSize: 10,
+                            color: SwabbitTheme.text3)),
+                  ]),
                 ],
               ),
             ),
@@ -772,34 +841,13 @@ class _FavoriteCard extends StatelessWidget {
     );
   }
 
-  Widget _placeholder(Listing listing) => Container(
-        color: SwabbitTheme.surface2,
-        child: Center(
-          child: Text(listing.categoryEmoji,
-              style: const TextStyle(fontSize: 40)),
-        ),
-      );
-}
-
-// ── ICON BUTTON ───────────────────────────────────────────────────────────────
-
-class _IconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _IconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: SwabbitTheme.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: SwabbitTheme.border),
-          ),
-          child: Icon(icon, size: 18, color: SwabbitTheme.text2),
-        ),
-      );
+  static Widget _placeholder(Listing listing) {
+    return Container(
+      color: SwabbitTheme.surface2,
+      child: Center(
+        child:
+            Text(listing.categoryEmoji, style: const TextStyle(fontSize: 32)),
+      ),
+    );
+  }
 }

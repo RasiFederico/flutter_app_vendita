@@ -2,6 +2,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/listing.dart';
 import '../models/chat.dart';
+import '../models/review.dart';
 
 // ─── Costanti — sostituisci con i tuoi valori da supabase.com ────────────────
 const String supabaseUrl = '';
@@ -597,5 +598,71 @@ class SupabaseService {
       await addFavorite(listingId);
       return true;
     }
+  }
+
+  // ── RECENSIONI ────────────────────────────────────────────────────────────────
+// Aggiungi questi metodi a SupabaseService, prima della parentesi graffa
+// di chiusura della classe (prima dell'ultimo } del file).
+
+  /// Tutte le recensioni ricevute da un utente, con join sul profilo recensore.
+  static Future<List<Review>> getReviews(String reviewedId) async {
+    final res = await client
+        .from('reviews')
+        .select('*, reviewer_profile:profiles!reviewer_id(nome, cognome, username, avatar_url)')
+        .eq('reviewed_id', reviewedId)
+        .order('created_at', ascending: false);
+    return (res as List).map((e) => Review.fromMap(e)).toList();
+  }
+
+  /// Stream real-time delle recensioni di un utente.
+  static Stream<List<Map<String, dynamic>>> reviewsStream(String reviewedId) {
+    return client
+        .from('reviews')
+        .stream(primaryKey: ['id'])
+        .eq('reviewed_id', reviewedId)
+        .order('created_at', ascending: false);
+  }
+
+  /// Inserisce o aggiorna la recensione dell'utente corrente su reviewedId.
+  static Future<void> submitReview({
+    required String reviewedId,
+    required int rating,
+    String? description,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Devi essere loggato');
+    await client.from('reviews').upsert({
+      'reviewer_id': user.id,
+      'reviewed_id': reviewedId,
+      'rating': rating,
+      'description': description?.trim().isNotEmpty == true
+          ? description!.trim()
+          : null,
+    }, onConflict: 'reviewer_id,reviewed_id');
+  }
+
+  /// Elimina la propria recensione su un utente.
+  static Future<void> deleteReview(String reviewId) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId)
+        .eq('reviewer_id', user.id);
+  }
+
+  /// Restituisce la recensione che l'utente corrente ha lasciato su reviewedId,
+  /// oppure null se non esiste.
+  static Future<Review?> getMyReviewFor(String reviewedId) async {
+    final user = currentUser;
+    if (user == null) return null;
+    final res = await client
+        .from('reviews')
+        .select('*, reviewer_profile:profiles!reviewer_id(nome, cognome, username, avatar_url)')
+        .eq('reviewer_id', user.id)
+        .eq('reviewed_id', reviewedId)
+        .maybeSingle();
+    return res != null ? Review.fromMap(res) : null;
   }
 }
