@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- SEO -->
+  <title>SWABBIT — Compra e Vendi PC Usati in Totale Sicurezza</title>
+  <meta name="description"
+    content="SWABBIT è l'unico marketplace per PC e componenti usati con garanzia integrata. Stop truffe: verifichiamo ogni prodotto prima che arrivi a te. Entra nella waitlist!" />
+  <meta name="keywords"
+    content="PC usati, componenti PC, marketplace sicuro, garanzia PC usato, comprare PC usato, vendere PC usato, gaming PC" />
+  <meta name="author" content="SWABBIT" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="SWABBIT — L'unico Marketplace di PC Usati Garantito" />
+  <meta property="og:description"
+    content="Compra e vendi PC usati senza rischi. Ogni prodotto viene verificato fisicamente prima della consegna." />
+  <meta property="og:type" content="website" />
+
+  <!-- Favicon placeholder -->
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- ========== NAVBAR ========== -->
+  <nav class="navbar" id="navbar">
+    <div class="container navbar__inner">
+      <a href="#" class="navbar__logo" aria-label="SWABBIT Home">
+        <!-- Shield icon -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+        SWABBIT
+      </a>
+      <button class="navbar__cta" onclick="scrollToCTA()">Entra nella Waitlist</button>
+    </div>
+  </nav>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero" id="hero">
+    <div class="container hero__grid">
+      <div class="hero__content">
+        <div class="hero__badge">
+          <span class="badge badge--brand">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            Marketplace Garantito
+          </span>
+        </div>
+
+        <h1 class="hero__title">
+          Basta truffe.<br />
+          Compra PC usati<br />
+          <span>in totale sicurezza.</span>
+        </h1>
+
+        <p class="hero__subtitle">
+          SWABBIT è il primo marketplace dove ogni componente viene <strong>verificato fisicamente</strong> prima di
+          arrivarti. Protezione totale per chi compra e chi vende.
+        </p>
+
+        <div class="hero__actions">
+          <button class="btn btn--primary" onclick="scrollToCTA()" id="hero-cta">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 2L11 13" />
+              <path d="M22 2L15 22 11 13 2 9l20-7z" />
+            </svg>
+            Entra nella Waitlist
+          </button>
+          <a href="#come-funziona" class="btn btn--outline">Scopri come funziona</a>
+        </div>
+      </div>
+
+      <div class="hero__mockup">
+        <img src="app-mockup.png" alt="SWABBIT App — Marketplace PC usati garantito" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== SOCIAL PROOF ========== -->
+  <section class="social-proof reveal" id="social-proof">
+    <div class="container social-proof__inner">
+      <p class="social-proof__label">L'unico marketplace di PC usati con garanzia integrata</p>
+
+      <div class="social-proof__stats">
+        <div class="stat">
+          <div class="stat__number" data-target="100" data-suffix="%">0%</div>
+          <div class="stat__label">Protezione Acquirente</div>
+        </div>
+        <div class="stat">
+          <div class="stat__number" data-target="0" data-suffix="" data-text="Zero">Zero</div>
+          <div class="stat__label">Truffe Possibili</div>
+        </div>
+        <div class="stat">
+          <div class="stat__number" data-target="48" data-suffix="h">0h</div>
+          <div class="stat__label">Verifica Componenti</div>
+        </div>
+      </div>
+
+      <div class="social-proof__trust">
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+          Pagamenti protetti
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+          Test fisico di ogni prodotto
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+          Venditori verificati
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== BENEFITS ========== -->
+  <section class="benefits" id="vantaggi">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-tag">La Garanzia di Trust</p>
+        <h2 class="section-title">Perché scegliere SWABBIT?</h2>
+        <p class="section-subtitle">
+          Tre livelli di protezione che rendono ogni transazione sicura al 100%. Nessun rischio, nessuna sorpresa.
+        </p>
+      </div>
+
+      <div class="benefits__grid">
+        <!-- Card 1 -->
+        <div class="benefit-card reveal">
+          <div class="benefit-card__icon benefit-card__icon--shield">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <h3 class="benefit-card__title">I tuoi soldi sono al sicuro</h3>
+          <p class="benefit-card__text">
+            Il pagamento viene trattenuto in escrow fino a quando non confermi di aver ricevuto esattamente ciò che hai
+            ordinato. Nessun rischio finanziario.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="benefit-card reveal">
+          <div class="benefit-card__icon benefit-card__icon--check">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </div>
+          <h3 class="benefit-card__title">Componenti verificati fisicamente</h3>
+          <p class="benefit-card__text">
+            Con la garanzia opzionale, ogni pezzo viene testato nel nostro laboratorio. Benchmark, stress-test, verifica
+            seriali. Se non passa, non parte.
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="benefit-card reveal">
+          <div class="benefit-card__icon benefit-card__icon--lock">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <h3 class="benefit-card__title">Acquisti a rischio zero</h3>
+          <p class="benefit-card__text">
+            Venditore verificato + prodotto testato + pagamento protetto = zero possibilità di truffa. È matematica, non
+            speranza.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== HOW IT WORKS ========== -->
+  <section class="how-it-works" id="come-funziona">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-tag">Frizione Zero</p>
+        <h2 class="section-title">Semplice come deve essere</h2>
+        <p class="section-subtitle">
+          Tre passaggi e hai il tuo hardware garantito. Noi ci occupiamo di tutto il resto.
+        </p>
+      </div>
+
+      <div class="steps">
+        <!-- Step 1 -->
+        <div class="step reveal">
+          <div class="step__number">1</div>
+          <div class="step__icon">🔍</div>
+          <h3 class="step__title">Trovi il PC</h3>
+          <p class="step__text">
+            Cerca tra centinaia di annunci verificati. Filtra per componente, budget, benchmark. Trova l'affare
+            perfetto.
+          </p>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step reveal">
+          <div class="step__number">2</div>
+          <div class="step__icon">🔬</div>
+          <h3 class="step__title">Noi lo testiamo</h3>
+          <p class="step__text">
+            Attivi la garanzia opzionale e il prodotto passa dal nostro laboratorio. Lo testiamo, lo certifichiamo, lo
+            impacchettiamo.
+          </p>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step reveal">
+          <div class="step__number">3</div>
+          <div class="step__icon">✅</div>
+          <h3 class="step__title">Ti arriva garantito</h3>
+          <p class="step__text">
+            Ricevi il prodotto verificato e certificato. Se qualcosa non va, rimborso immediato. Senza discussioni.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FINAL CTA ========== -->
+  <section class="final-cta" id="waitlist">
+    <div class="container">
+      <div class="final-cta__card reveal">
+        <h2 class="final-cta__title">
+          Pronto a comprare e vendere<br />senza più rischi?
+        </h2>
+        <p class="final-cta__subtitle">
+          Entra nella waitlist e sii tra i primi a provare SWABBIT. Accesso anticipato, vantaggi esclusivi e zero costi
+          di iscrizione.
+        </p>
+        <button class="btn btn--white" id="final-cta-btn" onclick="scrollToCTA()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13" />
+            <path d="M22 2L15 22 11 13 2 9l20-7z" />
+          </svg>
+          Entra nella Waitlist — È gratis
+        </button>
+        <p class="final-cta__note">Nessuna carta richiesta · Cancellati quando vuoi</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="container">
+      <p class="footer__text">© 2026 SWABBIT. Tutti i diritti riservati. Il marketplace di PC usati garantito.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
